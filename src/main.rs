@@ -59,7 +59,10 @@ async fn listener(config: Config) -> io::Result<()> {
         let resp = i3.subscribe(&subs).await?;
         println!("Response: {:#?}", resp);
 
+        // Need separate tx and rx connections, since sending and receiving on the same connection
+        // can cause messages to get missed/jumbled.
         let mut i3_tx = I3::connect().await?;
+        let mut i3_rx = I3::connect().await?;
 
         let mut listener = i3.listen();
         let mut restart = false;
@@ -71,9 +74,8 @@ async fn listener(config: Config) -> io::Result<()> {
                     println!("Restart detected");
                 }
             }
-            // TODO: parallelize
             for handler in handlers.iter_mut() {
-                if let Some(msg) = handler.handle_event(&event, &mut i3_tx).await {
+                if let Some(msg) = handler.handle_event(&event, &mut i3_rx).await {
                     i3_tx.send_msg_body(Msg::RunCommand, msg).await?;
                 }
             }
@@ -262,14 +264,16 @@ impl AddAssign<WSDirection> for usize {
 }
 impl WSHistory {
     async fn get_ws(&mut self, dir: WSDirection, i3: &mut I3) -> bool {
-        if (dir == WSDirection::NEXT && self.hist_ptr < self.ws_hist.len() - 1)
-            || (dir == WSDirection::PREV && self.hist_ptr > 0)
+        let check_range = |hist_ptr|
+            (dir == WSDirection::NEXT && hist_ptr < self.ws_hist.len() - 1)
+            || (dir == WSDirection::PREV && hist_ptr > 0);
+        if check_range(self.hist_ptr)
         {
             self.hist_ptr += dir;
             if self.skip_visible {
                 if let Ok(workspaces) = i3.get_workspaces().await {
                     let mut dest_ws = self.hist_ptr;
-                    while dest_ws < self.ws_hist.len() - 1 {
+                    while check_range(dest_ws) {
                         if matches!(workspaces.iter().find(|&w| w.num == self.ws_hist[dest_ws]), Some(ws) if ws.visible)
                         {
                             dest_ws += dir;
