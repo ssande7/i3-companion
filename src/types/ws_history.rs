@@ -82,48 +82,13 @@ impl From<&WSHistoryConfig> for WSHistory {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum WSDirection {
-    NEXT,
-    PREV,
-}
-impl From<i32> for WSDirection {
-    fn from(i: i32) -> Self {
-        if i >= 0 {
-            Self::NEXT
-        } else {
-            Self::PREV
-        }
-    }
-}
-impl From<WSDirection> for i32 {
-    fn from(d: WSDirection) -> Self {
-        match d {
-            WSDirection::NEXT => 1,
-            WSDirection::PREV => -1,
-        }
-    }
-}
-impl Add<WSDirection> for usize {
-    type Output = usize;
-    fn add(self, rhs: WSDirection) -> Self::Output {
-        match rhs {
-            WSDirection::NEXT => self + 1,
-            WSDirection::PREV => self - 1,
-        }
-    }
-}
-impl AddAssign<WSDirection> for usize {
-    fn add_assign(&mut self, rhs: WSDirection) {
-        *self = *self + rhs;
-    }
-}
-
 impl WSHistory {
     async fn get_ws(&mut self, dir: WSDirection, i3: &mut I3) -> bool {
         let check_range = |hist_ptr| {
-            (dir == WSDirection::NEXT && hist_ptr < self.ws_hist.len() - 1)
-                || (dir == WSDirection::PREV && hist_ptr > 0)
+            match dir {
+                WSDirection::NEXT => hist_ptr < self.ws_hist.len() - 1,
+                WSDirection::PREV => hist_ptr > 0,
+            }
         };
         if check_range(self.hist_ptr) {
             self.hist_ptr += dir;
@@ -205,8 +170,7 @@ impl OnEvent for WSHistory {
                 None
             }
             Event::Binding(key) => {
-                let hist_len = self.ws_hist.len();
-                if hist_len > 0 {
+                if self.ws_hist.len() > 0 {
                     if matches!(&self.binding_prev, Some(kb) if kb == key) {
                         if self.get_ws(WSDirection::NEXT, i3).await {
                             self.ignore_ctr += 1;
@@ -250,5 +214,42 @@ impl OnEvent for WSHistory {
             }
             _ => None,
         }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum WSDirection {
+    NEXT,
+    PREV,
+}
+impl From<i32> for WSDirection {
+    fn from(i: i32) -> Self {
+        if i >= 0 {
+            Self::NEXT
+        } else {
+            Self::PREV
+        }
+    }
+}
+impl From<WSDirection> for i32 {
+    fn from(d: WSDirection) -> Self {
+        match d {
+            WSDirection::NEXT => 1,
+            WSDirection::PREV => -1,
+        }
+    }
+}
+impl Add<WSDirection> for usize {
+    type Output = usize;
+    fn add(self, rhs: WSDirection) -> Self::Output {
+        match rhs {
+            WSDirection::NEXT => self + 1,
+            WSDirection::PREV => self - 1,
+        }
+    }
+}
+impl AddAssign<WSDirection> for usize {
+    fn add_assign(&mut self, rhs: WSDirection) {
+        *self = *self + rhs;
     }
 }
