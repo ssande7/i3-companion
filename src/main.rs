@@ -8,13 +8,17 @@ use tokio_i3ipc::{
 use tokio_stream::StreamExt;
 
 mod types;
-use types::{traits::Configurable, ws_history::WSHistoryConfig, Config};
+use types::{
+    layout_tracker::LayoutTrackerConfig,
+    traits::Configurable,
+    ws_history::WSHistoryConfig, Config,
+};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
     let mut config = Config::new();
     config.ws_history = Some(WSHistoryConfig::default()); // TODO: parse config
-                                                          // config.layout_tracker = Some(LayoutTrackerConfig::default());
+    config.layout_tracker = Some(LayoutTrackerConfig::default());
     listener(config).await
 }
 

@@ -84,11 +84,9 @@ impl From<&WSHistoryConfig> for WSHistory {
 
 impl WSHistory {
     async fn get_ws(&mut self, dir: WSDirection, i3: &mut I3) -> bool {
-        let check_range = |hist_ptr| {
-            match dir {
-                WSDirection::NEXT => hist_ptr < self.ws_hist.len() - 1,
-                WSDirection::PREV => hist_ptr > 0,
-            }
+        let check_range = |hist_ptr| match dir {
+            WSDirection::NEXT => hist_ptr < self.ws_hist.len() - 1,
+            WSDirection::PREV => hist_ptr > 0,
         };
         if check_range(self.hist_ptr) {
             self.hist_ptr += dir;
@@ -136,14 +134,10 @@ impl OnEvent for WSHistory {
                         }
                         if !matches!(self.ws_hist.front(), Some(&hist_last) if hist_last == old_num)
                         {
-                            if self.ws_hist.len() > 1 && self.ws_hist[1] == old_num {
-                                self.ws_hist.swap(0, 1);
-                            } else {
-                                if self.ws_hist.len() == self.hist_sz {
-                                    self.ws_hist.pop_back();
-                                }
-                                self.ws_hist.push_front(old_num);
+                            if self.ws_hist.len() == self.hist_sz {
+                                self.ws_hist.pop_back();
                             }
+                            self.ws_hist.push_front(old_num);
                         }
                     }
                     if let Some(cur_num) = current.num {
@@ -156,14 +150,10 @@ impl OnEvent for WSHistory {
                         }
                         if !matches!(self.ws_hist.front(), Some(&hist_last) if hist_last == cur_num)
                         {
-                            if self.ws_hist.len() > 1 && self.ws_hist[1] == cur_num {
-                                self.ws_hist.swap(0, 1);
-                            } else {
-                                if self.ws_hist.len() == self.hist_sz {
-                                    self.ws_hist.pop_back();
-                                }
-                                self.ws_hist.push_front(cur_num);
+                            if self.ws_hist.len() == self.hist_sz {
+                                self.ws_hist.pop_back();
                             }
+                            self.ws_hist.push_front(cur_num);
                         }
                     }
                 }
