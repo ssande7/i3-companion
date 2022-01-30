@@ -134,10 +134,14 @@ impl OnEvent for WSHistory {
                         }
                         if !matches!(self.ws_hist.front(), Some(&hist_last) if hist_last == old_num)
                         {
-                            if self.ws_hist.len() == self.hist_sz {
-                                self.ws_hist.pop_back();
+                            if self.ws_hist.len() > 2 && self.ws_hist[0] == self.ws_hist[2] && old_num == self.ws_hist[1] {
+                                self.ws_hist.drain(..2);
+                            } else {
+                                if self.ws_hist.len() == self.hist_sz {
+                                    self.ws_hist.pop_back();
+                                }
+                                self.ws_hist.push_front(old_num);
                             }
-                            self.ws_hist.push_front(old_num);
                         }
                     }
                     if let Some(cur_num) = current.num {
@@ -150,10 +154,14 @@ impl OnEvent for WSHistory {
                         }
                         if !matches!(self.ws_hist.front(), Some(&hist_last) if hist_last == cur_num)
                         {
-                            if self.ws_hist.len() == self.hist_sz {
-                                self.ws_hist.pop_back();
+                            if self.ws_hist.len() > 2 && self.ws_hist[0] == self.ws_hist[2] && cur_num == self.ws_hist[1] {
+                                self.ws_hist.drain(..2);
+                            } else {
+                                if self.ws_hist.len() == self.hist_sz {
+                                    self.ws_hist.pop_back();
+                                }
+                                self.ws_hist.push_front(cur_num);
                             }
-                            self.ws_hist.push_front(cur_num);
                         }
                     }
                 }
