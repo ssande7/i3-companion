@@ -1,8 +1,9 @@
 use super::traits::{Configurable, OnEvent};
 use async_trait::async_trait;
 use glob::glob;
+use libc;
 use regex::Regex;
-use std::{collections::HashSet, fs::OpenOptions, io::Write};
+use std::collections::HashSet; //, fs::OpenOptions, io::Write, time::Duration};
 use tokio_i3ipc::{
     event::{Event, Subscribe},
     reply::Node,
@@ -71,19 +72,36 @@ impl OnEvent for LayoutTracker {
                             for bar in bars {
                                 match bar {
                                     Ok(pipe) => {
-                                        match OpenOptions::new()
-                                            .read(false)
-                                            .write(true)
-                                            .create(false)
-                                            .open(pipe)
-                                        {
-                                            Ok(mut pipe) => writeln!(pipe, "{}", pipe_str)
-                                                .unwrap_or_else(|_| {
-                                                    println!("WARNING: bar pipe write failed")
-                                                }),
-                                            Err(e) => {
-                                                println!("WARNING: bar pipe write error - {}", e)
+                                        if let Some(fname) = pipe.to_str() {
+                                            // Need libc::open to open FIFO buffers in nonblocking mode.
+                                            unsafe {
+                                                let bytes = &pipe_str.as_bytes()[0] as *const u8;
+                                                libc::write(
+                                                    libc::open(
+                                                        &fname.as_bytes()[0] as *const u8 as *const i8,
+                                                        libc::O_APPEND | libc::O_NONBLOCK | libc::O_WRONLY,
+                                                    ),
+                                                    bytes as *const libc::c_void,
+                                                    pipe_str.as_bytes().len(),
+                                                );
                                             }
+
+                                            // match OpenOptions::new()
+                                            //     .read(false)
+                                            //     .write(true)
+                                            //     .append(true)
+                                            //     .create(false)
+                                            //     // .nonblock(true)
+                                            //     .open(pipe)
+                                            // {
+                                            //     Ok(mut pipe) => writeln!(pipe, "{}", pipe_str)
+                                            //         .unwrap_or_else(|_| {
+                                            //             println!("WARNING: bar pipe write failed")
+                                            //         }),
+                                            //     Err(e) => {
+                                            //         println!("WARNING: bar pipe write error - {}", e)
+                                            //     }
+                                            // }
                                         }
                                     }
                                     _ => {
