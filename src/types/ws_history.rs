@@ -1,9 +1,12 @@
-use super::keybinding::KeyBinding;
-use super::traits::{Configurable, OnEvent};
+use super::{
+    keybinding::KeyBinding,
+    traits::{Configurable, OnEvent},
+};
 use async_trait::async_trait;
 use std::{
     collections::{vec_deque::VecDeque, HashSet},
     ops::{Add, AddAssign},
+    time::{Duration, Instant},
 };
 use tokio_i3ipc::{
     event as I3Event,
@@ -16,6 +19,8 @@ pub struct WSHistory {
     hist_sz: usize,
     hist_ptr: usize,
     ignore_ctr: usize,
+    activity_timer: Instant,
+    activity_timeout: Duration,
     pub skip_visible: bool,
     pub binding_prev: Option<KeyBinding>,
     pub binding_move_prev: Option<KeyBinding>,
@@ -25,6 +30,7 @@ pub struct WSHistory {
 pub struct WSHistoryConfig {
     pub hist_sz: usize,
     pub skip_visible: bool,
+    pub activity_timeout: Duration,
     pub binding_prev: Option<KeyBinding>,
     pub binding_move_prev: Option<KeyBinding>,
     pub binding_next: Option<KeyBinding>,
@@ -36,6 +42,7 @@ impl Configurable for WSHistoryConfig {
         Self {
             hist_sz: 20,
             skip_visible: true,
+            activity_timeout: Duration::from_secs(10),
             binding_prev: Some(KeyBinding {
                 event_state_mask: vec!["Mod4".to_string()].into_iter().collect(),
                 symbol: Some("o".into()),
@@ -74,6 +81,8 @@ impl From<&WSHistoryConfig> for WSHistory {
             hist_ptr: 0,
             ignore_ctr: 0,
             skip_visible: config.skip_visible,
+            activity_timer: Instant::now(),
+            activity_timeout: config.activity_timeout,
             binding_prev: config.binding_prev.clone(),
             binding_move_prev: config.binding_move_prev.clone(),
             binding_next: config.binding_next.clone(),
@@ -83,10 +92,12 @@ impl From<&WSHistoryConfig> for WSHistory {
 }
 
 impl WSHistory {
+    /// Get the next or previous workspace from the history
     async fn get_ws(&mut self, dir: WSDirection, i3: &mut I3) -> bool {
+        self.check_timeout();
         let check_range = |hist_ptr| match dir {
-            WSDirection::NEXT => hist_ptr < self.ws_hist.len() - 1,
-            WSDirection::PREV => hist_ptr > 0,
+            WSDirection::PREV => hist_ptr < self.ws_hist.len() - 1,
+            WSDirection::NEXT => hist_ptr > 0,
         };
         if check_range(self.hist_ptr) {
             self.hist_ptr += dir;
@@ -109,6 +120,59 @@ impl WSHistory {
             false
         }
     }
+
+    /// Add `ws_num` to the history, resetting the history pointer
+    fn add_ws(&mut self, ws_num: i32) {
+        self.reset_ptr();
+        // Add `ws_num` to history if it won't create a duplicate
+        if !matches!(self.ws_hist.front(), Some(&hist_last) if hist_last == ws_num) {
+            // Prevent duplicate sequences of 2
+            if self.ws_hist.len() > 2
+                && self.ws_hist[0] == self.ws_hist[2]
+                && ws_num == self.ws_hist[1]
+            {
+                self.ws_hist.pop_front();
+            } else {
+                // Add new ws, forgetting oldest if at max length
+                self.ws_hist.truncate(self.hist_sz);
+                self.ws_hist.push_front(ws_num);
+            }
+        }
+    }
+
+    /// Reset the history pointer, reversing the order of history before it
+    /// NOTE: may change `ws_hist.len()`
+    fn reset_ptr(&mut self) {
+        if self.hist_ptr > 0 {
+            // Reverse order of history that has been cycled back through,
+            // preventing double ups
+            if self.hist_ptr < self.ws_hist.len() - 1
+                && self.ws_hist[self.hist_ptr + 1] == self.ws_hist[0]
+            {
+                self.ws_hist.pop_front();
+            }
+            for i in 0..=self.hist_ptr / 2 {
+                self.ws_hist.swap(i, self.hist_ptr - i);
+            }
+            self.hist_ptr = 0;
+        }
+    }
+
+    /// Reset the activity timeout
+    fn reset_timer(&mut self) {
+        self.activity_timer = Instant::now() + self.activity_timeout;
+    }
+
+    /// Check if workspace hasn't been changed since `activity_timer`,
+    /// and reset the pointer if so
+    fn check_timeout(&mut self) {
+        if self.activity_timeout > Duration::from_secs(0)
+            && Instant::now() > self.activity_timer
+        {
+            self.reset_ptr();
+            self.reset_timer();
+        }
+    }
 }
 
 #[async_trait]
@@ -121,48 +185,15 @@ impl OnEvent for WSHistory {
     async fn handle_event(&mut self, e: &Event, i3: &mut I3) -> Option<String> {
         match e {
             Event::Workspace(ws) => {
+                self.reset_timer();
                 if self.ignore_ctr > 0 {
                     self.ignore_ctr -= 1;
                 } else if let (Some(old), Some(current)) = (&ws.old, &ws.current) {
                     if let Some(old_num) = old.num {
-                        if self.hist_ptr > 0 {
-                            // let front: Vec<i32> = self.ws_hist.drain(..self.hist_ptr).collect();
-                            for i in 0..=self.hist_ptr / 2 {
-                                self.ws_hist.swap(i, self.hist_ptr - i);
-                            }
-                            self.hist_ptr = 0;
-                        }
-                        if !matches!(self.ws_hist.front(), Some(&hist_last) if hist_last == old_num)
-                        {
-                            if self.ws_hist.len() > 2 && self.ws_hist[0] == self.ws_hist[2] && old_num == self.ws_hist[1] {
-                                self.ws_hist.drain(..2);
-                            } else {
-                                if self.ws_hist.len() == self.hist_sz {
-                                    self.ws_hist.pop_back();
-                                }
-                                self.ws_hist.push_front(old_num);
-                            }
-                        }
+                        self.add_ws(old_num);
                     }
                     if let Some(cur_num) = current.num {
-                        if self.hist_ptr > 0 {
-                            // self.ws_hist.drain(..self.hist_ptr);
-                            for i in 0..=self.hist_ptr / 2 {
-                                self.ws_hist.swap(i, self.hist_ptr - i);
-                            }
-                            self.hist_ptr = 0;
-                        }
-                        if !matches!(self.ws_hist.front(), Some(&hist_last) if hist_last == cur_num)
-                        {
-                            if self.ws_hist.len() > 2 && self.ws_hist[0] == self.ws_hist[2] && cur_num == self.ws_hist[1] {
-                                self.ws_hist.drain(..2);
-                            } else {
-                                if self.ws_hist.len() == self.hist_sz {
-                                    self.ws_hist.pop_back();
-                                }
-                                self.ws_hist.push_front(cur_num);
-                            }
-                        }
+                        self.add_ws(cur_num);
                     }
                 }
                 None
@@ -170,14 +201,14 @@ impl OnEvent for WSHistory {
             Event::Binding(key) => {
                 if self.ws_hist.len() > 0 {
                     if matches!(&self.binding_prev, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::NEXT, i3).await {
+                        if self.get_ws(WSDirection::PREV, i3).await {
                             self.ignore_ctr += 1;
                             Some(format!("workspace number {}", self.ws_hist[self.hist_ptr]))
                         } else {
                             None
                         }
                     } else if matches!(&self.binding_move_prev, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::NEXT, i3).await {
+                        if self.get_ws(WSDirection::PREV, i3).await {
                             self.ignore_ctr += 2;
                             Some(format!(
                                 "move container to workspace number {0}; workspace number {0}",
@@ -187,14 +218,14 @@ impl OnEvent for WSHistory {
                             None
                         }
                     } else if matches!(&self.binding_next, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::PREV, i3).await {
+                        if self.get_ws(WSDirection::NEXT, i3).await {
                             self.ignore_ctr += 1;
                             Some(format!("workspace number {}", self.ws_hist[self.hist_ptr]))
                         } else {
                             None
                         }
                     } else if matches!(&self.binding_move_next, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::PREV, i3).await {
+                        if self.get_ws(WSDirection::NEXT, i3).await {
                             self.ignore_ctr += 2;
                             Some(format!(
                                 "move container to workspace number {0}; workspace number {0}",
@@ -223,17 +254,17 @@ pub enum WSDirection {
 impl From<i32> for WSDirection {
     fn from(i: i32) -> Self {
         if i >= 0 {
-            Self::NEXT
-        } else {
             Self::PREV
+        } else {
+            Self::NEXT
         }
     }
 }
 impl From<WSDirection> for i32 {
     fn from(d: WSDirection) -> Self {
         match d {
-            WSDirection::NEXT => 1,
-            WSDirection::PREV => -1,
+            WSDirection::NEXT => -1,
+            WSDirection::PREV => 1,
         }
     }
 }
@@ -241,8 +272,8 @@ impl Add<WSDirection> for usize {
     type Output = usize;
     fn add(self, rhs: WSDirection) -> Self::Output {
         match rhs {
-            WSDirection::NEXT => self + 1,
-            WSDirection::PREV => self - 1,
+            WSDirection::NEXT => self - 1,
+            WSDirection::PREV => self + 1,
         }
     }
 }
