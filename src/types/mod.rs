@@ -1,18 +1,22 @@
 pub mod keybinding;
-pub mod layout_tracker;
 pub mod traits;
+pub mod pipe_sender;
+pub mod layout_tracker;
+pub mod output_tracker;
 pub mod ws_history;
 
-use layout_tracker::{LayoutTracker, LayoutTrackerConfig};
 use std::time::Duration;
 use traits::OnEvent;
 use ws_history::{WSHistory, WSHistoryConfig};
+use layout_tracker::{LayoutTracker, LayoutTrackerConfig};
+use output_tracker::{OutputTracker, OutputTrackerConfig};
 
 pub struct Config {
     pub connection_timeout: Duration,  // secs
     pub connection_interval: Duration, // millis
     pub ws_history: Option<WSHistoryConfig>,
     pub layout_tracker: Option<LayoutTrackerConfig>,
+    pub output_tracker: Option<OutputTrackerConfig>,
 }
 
 impl Config {
@@ -23,6 +27,7 @@ impl Config {
             connection_interval: Duration::from_millis(10),
             ws_history: None,
             layout_tracker: None,
+            output_tracker: None,
         }
     }
 
@@ -35,6 +40,9 @@ impl Config {
         }
         if let Some(config) = &self.layout_tracker {
             handlers.push(Box::new(LayoutTracker::from(config)));
+        }
+        if let Some(config) = &self.output_tracker {
+            handlers.push(Box::new(OutputTracker::from(config)));
         }
         handlers
     }

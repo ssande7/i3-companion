@@ -10,6 +10,7 @@ use tokio_stream::StreamExt;
 mod types;
 use types::{
     layout_tracker::LayoutTrackerConfig,
+    output_tracker::OutputTrackerConfig,
     traits::Configurable,
     ws_history::WSHistoryConfig, Config,
 };
@@ -19,6 +20,7 @@ async fn main() -> io::Result<()> {
     let mut config = Config::new();
     config.ws_history = Some(WSHistoryConfig::default()); // TODO: parse config
     config.layout_tracker = Some(LayoutTrackerConfig::default());
+    config.output_tracker = Some(OutputTrackerConfig::default());
     listener(config).await
 }
 
