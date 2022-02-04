@@ -10,7 +10,7 @@ use std::{
 };
 use tokio_i3ipc::{
     event as I3Event,
-    event::{Event, Subscribe},
+    event::{Event, Subscribe, WorkspaceChange},
     I3,
 };
 
@@ -251,9 +251,9 @@ impl WSHistory {
     fn add_ws(&mut self, ws_num: i32, output: &String) {
         let hist_sz = self.hist.hist_sz;
         let hist = self.hist.get_or_add_mut(output);
-        hist.reset_ptr();
         // Add `ws_num` to history if it won't create a duplicate
-        if !matches!(hist.hist.front(), Some(&hist_last) if hist_last == ws_num) {
+        if hist.len() == 0 || hist[hist.hist_ptr] != ws_num {
+            hist.reset_ptr();
             // Prevent duplicate sequences of 2
             if hist.len() > 2 && hist[0] == hist[2] && ws_num == hist[1] {
                 hist.hist.pop_front();
@@ -323,14 +323,18 @@ impl OnEvent for WSHistory {
                         self.cur_output = output.clone();
                     }
                 }
-                if self.ignore_ctr > 0 {
-                    self.ignore_ctr -= 1;
-                } else if let (Some(old), Some(current)) = (&ws.old, &ws.current) {
-                    if let (Some(old_num), Some(output)) = (old.num, &old.output) {
-                        self.add_ws(old_num, output);
-                    }
-                    if let (Some(cur_num), Some(output)) = (current.num, &current.output) {
-                        self.add_ws(cur_num, output);
+                if ws.change != WorkspaceChange::Init {
+                    if self.ignore_ctr > 0 {
+                        self.ignore_ctr -= 1;
+                    } else if let (Some(old), Some(current)) = (&ws.old, &ws.current) {
+                        if old.num != current.num {
+                            if let (Some(old_num), Some(output)) = (old.num, &old.output) {
+                                self.add_ws(old_num, output);
+                            }
+                            if let (Some(cur_num), Some(output)) = (current.num, &current.output) {
+                                self.add_ws(cur_num, output);
+                            }
+                        }
                     }
                 }
                 None
