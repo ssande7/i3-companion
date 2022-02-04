@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, thread, time::Duration};
 
 use async_trait::async_trait;
 use tokio_i3ipc::{
@@ -7,8 +7,8 @@ use tokio_i3ipc::{
 };
 
 use super::{
-    traits::{OnEvent, Configurable},
     pipe_sender::PipeSender,
+    traits::{Configurable, OnEvent, OnTimer},
 };
 
 pub struct OutputTracker {
@@ -18,6 +18,7 @@ pub struct OutputTracker {
 pub struct OutputTrackerConfig {
     pub ipc_str: String,
     pub bar_pipe_glob: String,
+    pub update_interval: Duration,
 }
 
 impl Configurable for OutputTrackerConfig {
@@ -25,6 +26,7 @@ impl Configurable for OutputTrackerConfig {
         Self {
             ipc_str: "hook:module/date1".into(),
             bar_pipe_glob: "/tmp/polybar_mqueue.*".into(),
+            update_interval: Duration::from_secs(5),
         }
     }
     fn from_cli() -> Self {
@@ -37,12 +39,25 @@ impl Configurable for OutputTrackerConfig {
 
 impl From<&OutputTrackerConfig> for OutputTracker {
     fn from(config: &OutputTrackerConfig) -> Self {
-        Self {
+        let out = Self {
             ipc_str: config.ipc_str.clone(),
             pipe: PipeSender {
                 bar_pipe_glob: config.bar_pipe_glob.clone(),
-            }
-        }
+            },
+        };
+        out.spawn_timer(config.update_interval);
+        out
+    }
+}
+
+impl OnTimer for OutputTracker {
+    fn spawn_timer(&self, interval: Duration) {
+        let pipe = self.pipe.clone();
+        let text = self.ipc_str.clone();
+        thread::spawn(move || loop {
+            pipe.send(&text[..]);
+            thread::sleep(interval);
+        });
     }
 }
 

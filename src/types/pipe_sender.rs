@@ -1,6 +1,7 @@
 use glob::glob;
 use libc;
 
+#[derive(Clone)]
 pub struct PipeSender {
     pub bar_pipe_glob: String,
 }
