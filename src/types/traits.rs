@@ -12,9 +12,3 @@ pub trait OnEvent {
 pub trait OnTimer {
     fn spawn_timer(&self, interval: Duration);
 }
-
-pub trait Configurable {
-    fn default() -> Self;
-    fn from_config(config: &str) -> Self;
-    fn from_cli() -> Self;
-}

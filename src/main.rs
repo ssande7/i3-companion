@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io, time::Duration};
+use std::{collections::HashSet, io, time::Duration, process::exit};
 use tokio_i3ipc::{
     event as I3Event,
     event::{Event, Subscribe},
@@ -9,18 +9,21 @@ use tokio_stream::StreamExt;
 
 mod types;
 use types::{
-    layout_tracker::LayoutTrackerConfig,
-    output_tracker::OutputTrackerConfig,
-    traits::Configurable,
-    ws_history::WSHistoryConfig, Config,
+    Config, TomlConfig,
 };
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
-    let mut config = Config::new();
-    config.ws_history = Some(WSHistoryConfig::default()); // TODO: parse config
-    config.layout_tracker = Some(LayoutTrackerConfig::default());
-    config.output_tracker = Some(OutputTrackerConfig::default());
+    let config: Config = TomlConfig::new().unwrap_or_else(
+        |e| {
+            eprintln!("Error reading input: {}", e);
+            exit(8)
+        }
+    ).into();
+    // config.ws_history = Some(WSHistory::default());
+    // config.layout_tracker = Some(LayoutTracker::default());
+    // config.output_tracker = Some(OutputTracker::default());
+    // let polybar = Arc::new(PipeSender::new("/tmp/polybar_mqueue.*".into()));
     listener(config).await
 }
 
@@ -47,7 +50,7 @@ async fn try_i3_connection(
 }
 
 /// Main listener loop
-async fn listener(config: Config) -> io::Result<()> {
+async fn listener(mut config: Config) -> io::Result<()> {
     // Set up event handlers
     let mut handlers = config.get_handlers();
     let mut subs = HashSet::new();

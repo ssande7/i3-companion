@@ -1,32 +1,50 @@
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    sync::{Arc, Mutex},
+    os::unix::fs::OpenOptionsExt,
+    thread,
+    time::Duration,
+};
+
 use glob::glob;
-use libc;
 
 #[derive(Clone)]
 pub struct PipeSender {
-    pub bar_pipe_glob: String,
+    pub bar_pipe_glob: Arc<Mutex<String>>,
 }
 impl PipeSender {
-    pub fn send(&self, text: &str) {
-        if let Ok(bars) = glob(&self.bar_pipe_glob[..]) {
+    pub fn new(glob_str: String) -> PipeSender {
+        Self {
+            bar_pipe_glob: Arc::new(Mutex::new(glob_str)),
+        }
+    }
+    pub fn send(&self, msg: &str) {
+        let pipe_glob = self.bar_pipe_glob.lock().unwrap();
+        if let Ok(bars) = glob(pipe_glob.as_str()) {
             for bar in bars {
                 if let Ok(pipe) = bar {
                     if let Some(fname) = pipe.to_str() {
-                        // Need libc::open to open FIFO buffers in nonblocking mode.
-                        unsafe {
-                            let bytes = &text.as_bytes()[0] as *const u8;
-                            libc::write(
-                                libc::open(
-                                    &fname.as_bytes()[0] as *const u8 as *const i8,
-                                    libc::O_APPEND | libc::O_NONBLOCK | libc::O_WRONLY,
-                                ),
-                                bytes as *const libc::c_void,
-                                text.len(),
-                            );
+                        match OpenOptions::new()
+                            .write(true)
+                            .append(true)
+                            .custom_flags(libc::O_NONBLOCK)
+                            .open(fname)
+                        {
+                            Ok(mut fid) => {
+                                if let Err(e) = fid.write(&msg.as_bytes()) {
+                                    eprintln!("Error writing to pipe: {}", e);
+                                }
+                                if let Err(e) = fid.flush() {
+                                    eprintln!("Error flushing pipe buffer: {}", e);
+                                }
+                            }
+                            Err(e) => eprintln!("Error opening pipe: {}", e),
                         }
                     }
                 }
             }
         }
+        thread::sleep(Duration::from_millis(2));    // give the bar time to process the message before allowing the next
     }
 }
-

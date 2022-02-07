@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 use tokio_i3ipc::event as I3Event;
+use serde::Deserialize;
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 pub struct KeyBinding {
     pub event_state_mask: HashSet<String>,
     pub symbol: Option<String>,

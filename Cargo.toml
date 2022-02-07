@@ -14,3 +14,6 @@ async-trait = { version = "0.1.52" }
 glob = { version = "0.3.0" }
 regex = { version = "1" }
 libc = {version = "0.2" } # needed for libc::open to get nonblocking write to FIFO
+toml = {version = "0.5.8" }
+dirs = {version = "4.0.0" }
+serde = {version = "1.0.136"}

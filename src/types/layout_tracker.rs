@@ -1,10 +1,11 @@
 use super::{
     pipe_sender::PipeSender,
-    traits::{Configurable, OnEvent},
+    traits::OnEvent,
 };
 use async_trait::async_trait;
 use regex::Regex;
-use std::collections::HashSet; //, fs::OpenOptions, io::Write, time::Duration};
+use serde::Deserialize;
+use std::{collections::{HashSet, HashMap}, sync::Arc, thread}; //, fs::OpenOptions, io::Write, time::Duration};
 use tokio_i3ipc::{
     event::{Event, Subscribe},
     reply::Node,
@@ -13,38 +14,38 @@ use tokio_i3ipc::{
 
 /// Layout indicator
 pub struct LayoutTracker {
-    pub fmt_regex: Regex,
+    fmt_regex: Regex,
+    cur_layout: i32,
     pub pipe_echo_fmt: String,
-    pub pipe: PipeSender,
+    pub pipe: Arc<PipeSender>,
 }
+#[derive(Deserialize)]
 pub struct LayoutTrackerConfig {
     pub pipe_echo_fmt: String,
-    pub bar_pipe_glob: String,
+    pub pipe_name: String,
 }
 
-impl Configurable for LayoutTrackerConfig {
+impl Default for LayoutTracker {
     fn default() -> Self {
         Self {
+            fmt_regex: Regex::new("\\{\\}").unwrap(),
+            cur_layout: -1,
             pipe_echo_fmt: "hook:module/i3_layout{}".into(),
-            bar_pipe_glob: "/tmp/polybar_mqueue.*".into(),
+            pipe: Arc::new(PipeSender::new("/tmp/polybar_mqueue.*".into())),
         }
-    }
-    fn from_config(_config: &str) -> Self {
-        unimplemented!()
-    }
-    fn from_cli() -> Self {
-        unimplemented!()
     }
 }
 
-impl From<&LayoutTrackerConfig> for LayoutTracker {
-    fn from(config: &LayoutTrackerConfig) -> Self {
+impl From<(LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for LayoutTracker {
+    fn from(config: (LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
         Self {
             fmt_regex: Regex::new("\\{\\}").unwrap(),
-            pipe_echo_fmt: config.pipe_echo_fmt.clone(),
-            pipe: PipeSender {
-                bar_pipe_glob: config.bar_pipe_glob.clone(),
-            },
+            cur_layout: -1,
+            pipe_echo_fmt: config.0.pipe_echo_fmt,
+            pipe: config.1.get(&config.0.pipe_name).unwrap_or_else(|| {
+                eprintln!("ERROR: pipe '{}' not found in config file", config.0.pipe_name);
+                std::process::exit(6);
+            }).clone(),
         }
     }
 }
@@ -63,18 +64,22 @@ impl OnEvent for LayoutTracker {
                 if let Ok(tree) = &i3.get_tree().await {
                     if let Some(focused) = get_focused_node(tree.into()) {
                         let layout = if let Some(parent) = focused.parent {
-                            parent.layout
+                            parent.layout as i32 + 1
                         } else {
-                            focused.focused.layout
+                            focused.focused.layout as i32 + 1
                         };
-                        self.pipe.send(
-                            self.fmt_regex
-                                .replace_all(
-                                    &self.pipe_echo_fmt[..],
-                                    ((layout as i32) + 1).to_string(),
-                                )
-                                .as_ref(),
-                        );
+                        if self.cur_layout != layout {
+                            self.cur_layout = layout;
+                            let pipe = self.pipe.clone();
+                            let msg = self.fmt_regex
+                                    .replace_all(
+                                        &self.pipe_echo_fmt[..],
+                                        self.cur_layout.to_string(),
+                                    ).to_string();
+                            thread::spawn(move || {
+                                pipe.send(msg.as_str());
+                            });
+                        }
                     }
                 }
             }

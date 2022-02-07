@@ -1,6 +1,6 @@
 use super::{
     keybinding::KeyBinding,
-    traits::{Configurable, OnEvent},
+    traits::OnEvent,
 };
 use async_trait::async_trait;
 use std::{
@@ -8,13 +8,14 @@ use std::{
     ops::{Add, AddAssign, Index},
     time::{Duration, Instant},
 };
+use serde::Deserialize;
 use tokio_i3ipc::{
     event as I3Event,
     event::{Event, Subscribe, WorkspaceChange},
     I3,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize)]
 pub enum HistTypeConfig {
     Single,
     PerOutput,
@@ -23,10 +24,10 @@ enum HistType {
     Single(History),
     PerOutput(HashMap<String, History>),
 }
-impl HistType {
-    fn from_config(hist_type: HistTypeConfig, hist_sz: usize) -> Self {
-        match hist_type {
-            HistTypeConfig::Single => Self::Single(History::with_capacity(hist_sz)),
+impl From<(HistTypeConfig, usize)> for HistType {
+    fn from(config: (HistTypeConfig, usize)) -> Self {
+        match config.0 {
+            HistTypeConfig::Single => Self::Single(History::with_capacity(config.1)),
             HistTypeConfig::PerOutput => Self::PerOutput(HashMap::new()),
         }
     }
@@ -72,13 +73,15 @@ struct HistoryManager {
     hist: HistType,
     hist_sz: usize,
 }
-impl HistoryManager {
-    fn new(hist_type: HistTypeConfig, hist_sz: usize) -> Self {
+impl From<(HistTypeConfig, usize)> for HistoryManager {
+    fn from(config: (HistTypeConfig, usize)) -> Self {
         Self {
-            hist: HistType::from_config(hist_type, hist_sz),
-            hist_sz,
+            hist_sz: config.1,
+            hist: config.into(),
         }
     }
+}
+impl HistoryManager {
     fn get(&self, output: &String) -> Option<&History> {
         match &self.hist {
             HistType::Single(hist) => Some(hist),
@@ -118,7 +121,9 @@ pub struct WSHistory {
     pub binding_swap_prev: Option<KeyBinding>,
     pub binding_swap_next: Option<KeyBinding>,
     pub binding_reset: Option<KeyBinding>,
+    pub binding_to_head: Option<KeyBinding>,
 }
+#[derive(Deserialize)]
 pub struct WSHistoryConfig {
     pub hist_sz: usize,
     pub hist_type: HistTypeConfig,
@@ -131,14 +136,17 @@ pub struct WSHistoryConfig {
     pub binding_swap_prev: Option<KeyBinding>,
     pub binding_swap_next: Option<KeyBinding>,
     pub binding_reset: Option<KeyBinding>,
+    pub binding_to_head: Option<KeyBinding>,
 }
 
-impl Configurable for WSHistoryConfig {
+impl Default for WSHistory {
     fn default() -> Self {
         Self {
-            hist_sz: 20,
-            hist_type: HistTypeConfig::PerOutput,
+            hist: (HistTypeConfig::PerOutput, 20).into(),
             skip_visible: true,
+            ignore_ctr: 0,
+            cur_output: "".to_string(),
+            activity_timer: Instant::now(),
             activity_timeout: Duration::from_secs(10),
             binding_prev: Some(KeyBinding {
                 event_state_mask: vec!["Mod4".to_string()].into_iter().collect(),
@@ -177,32 +185,34 @@ impl Configurable for WSHistoryConfig {
                 symbol: Some("o".into()),
                 input_type: I3Event::BindType::Keyboard,
             }),
+            binding_to_head: Some(KeyBinding {
+                event_state_mask: vec!["Mod4".into(), "ctrl".into(), "shift".into()]
+                    .into_iter()
+                    .collect(),
+                symbol: Some("i".into()),
+                input_type: I3Event::BindType::Keyboard,
+            }),
         }
-    }
-    fn from_config(_config: &str) -> Self {
-        unimplemented!()
-    }
-    fn from_cli() -> Self {
-        unimplemented!()
     }
 }
 
-impl From<&WSHistoryConfig> for WSHistory {
-    fn from(config: &WSHistoryConfig) -> Self {
+impl From<WSHistoryConfig> for WSHistory {
+    fn from(config: WSHistoryConfig) -> Self {
         Self {
-            hist: HistoryManager::new(config.hist_type, config.hist_sz),
+            hist: (config.hist_type, config.hist_sz).into(),
             ignore_ctr: 0,
             skip_visible: config.skip_visible,
             activity_timer: Instant::now(),
             activity_timeout: config.activity_timeout,
             cur_output: "".to_string(),
-            binding_prev: config.binding_prev.clone(),
-            binding_move_prev: config.binding_move_prev.clone(),
-            binding_next: config.binding_next.clone(),
-            binding_move_next: config.binding_move_next.clone(),
-            binding_swap_prev: config.binding_swap_prev.clone(),
-            binding_swap_next: config.binding_swap_next.clone(),
-            binding_reset: config.binding_reset.clone(),
+            binding_prev: config.binding_prev,
+            binding_move_prev: config.binding_move_prev,
+            binding_next: config.binding_next,
+            binding_move_next: config.binding_move_next,
+            binding_swap_prev: config.binding_swap_prev,
+            binding_swap_next: config.binding_swap_next,
+            binding_reset: config.binding_reset,
+            binding_to_head: config.binding_to_head,
         }
     }
 }
@@ -245,6 +255,37 @@ impl WSHistory {
         } else {
             false
         }
+    }
+    
+    async fn goto_head(&mut self, i3: &mut I3) -> bool {
+        self.check_timeout();
+        let per_output = match self.hist.hist {
+            HistType::PerOutput(_) => true,
+            _ => false,
+        };
+        let hist = match self.hist.get_mut(&self.cur_output) {
+            Some(hist) => hist,
+            None => return false,
+        };
+        if hist.hist_ptr == 0 {return false;}
+        hist.hist_ptr = 0;
+        let limit = hist.len() - 1;
+        if self.skip_visible || per_output {
+            if let Ok(workspaces) = i3.get_workspaces().await {
+                let mut dest_ws = hist.hist_ptr;
+                while dest_ws < limit {
+                    if matches!(workspaces.iter().find(|&w| w.num == hist[dest_ws]), Some(ws)
+                        if (self.skip_visible && ws.visible) || (per_output && ws.output != self.cur_output))
+                    {
+                        dest_ws += 1;
+                    } else {
+                        hist.hist_ptr = dest_ws;
+                        break;
+                    }
+                }
+            }
+        }
+        true
     }
 
     /// Add `ws_num` to the history, resetting the history pointer
@@ -392,6 +433,14 @@ impl OnEvent for WSHistory {
                                 hist.reset_ptr();
                             }
                             None
+                        } else if matches!(&self.binding_to_head, Some(kb) if kb == key) {
+                            if self.goto_head(i3).await {
+                                self.ignore_ctr += 1;
+                                let hist = self.hist.get(&self.cur_output).unwrap();
+                                Some(format!("workspace number {}", hist[hist.hist_ptr]))
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
