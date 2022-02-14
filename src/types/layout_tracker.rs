@@ -1,11 +1,12 @@
-use super::{
-    pipe_sender::PipeSender,
-    traits::OnEvent,
-};
+use super::{pipe_sender::PipeSender, traits::OnEvent};
 use async_trait::async_trait;
 use regex::Regex;
 use serde::Deserialize;
-use std::{collections::{HashSet, HashMap}, sync::Arc, thread}; //, fs::OpenOptions, io::Write, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    thread,
+}; //, fs::OpenOptions, io::Write, time::Duration};
 use tokio_i3ipc::{
     event::{Event, Subscribe},
     reply::Node,
@@ -42,10 +43,17 @@ impl From<(LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for LayoutTr
             fmt_regex: Regex::new("\\{\\}").unwrap(),
             cur_layout: -1,
             pipe_echo_fmt: config.0.pipe_echo_fmt,
-            pipe: config.1.get(&config.0.pipe_name).unwrap_or_else(|| {
-                eprintln!("ERROR: pipe '{}' not found in config file", config.0.pipe_name);
-                std::process::exit(6);
-            }).clone(),
+            pipe: config
+                .1
+                .get(&config.0.pipe_name)
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "ERROR: pipe '{}' not found in config file",
+                        config.0.pipe_name
+                    );
+                    std::process::exit(6);
+                })
+                .clone(),
         }
     }
 }
@@ -71,11 +79,10 @@ impl OnEvent for LayoutTracker {
                         if self.cur_layout != layout {
                             self.cur_layout = layout;
                             let pipe = self.pipe.clone();
-                            let msg = self.fmt_regex
-                                    .replace_all(
-                                        &self.pipe_echo_fmt[..],
-                                        self.cur_layout.to_string(),
-                                    ).to_string();
+                            let msg = self
+                                .fmt_regex
+                                .replace_all(&self.pipe_echo_fmt[..], self.cur_layout.to_string())
+                                .to_string();
                             thread::spawn(move || {
                                 pipe.send(msg.as_str());
                             });

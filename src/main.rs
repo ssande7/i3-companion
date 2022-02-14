@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io, time::Duration, process::exit};
+use std::{collections::HashSet, io, process::exit, time::Duration};
 use tokio_i3ipc::{
     event as I3Event,
     event::{Event, Subscribe},
@@ -8,18 +8,16 @@ use tokio_i3ipc::{
 use tokio_stream::StreamExt;
 
 mod types;
-use types::{
-    Config, TomlConfig,
-};
+use types::{Config, TomlConfig};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
-    let config: Config = TomlConfig::new().unwrap_or_else(
-        |e| {
+    let config: Config = TomlConfig::new()
+        .unwrap_or_else(|e| {
             eprintln!("Error reading input: {}", e);
             exit(8)
-        }
-    ).into();
+        })
+        .into();
     // config.ws_history = Some(WSHistory::default());
     // config.layout_tracker = Some(LayoutTracker::default());
     // config.output_tracker = Some(OutputTracker::default());

@@ -1,8 +1,8 @@
 use std::{
     fs::OpenOptions,
     io::Write,
-    sync::{Arc, Mutex},
     os::unix::fs::OpenOptionsExt,
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
@@ -25,26 +25,23 @@ impl PipeSender {
             for bar in bars {
                 if let Ok(pipe) = bar {
                     if let Some(fname) = pipe.to_str() {
-                        match OpenOptions::new()
+                        if let Ok(mut fid) = OpenOptions::new()
                             .write(true)
                             .append(true)
                             .custom_flags(libc::O_NONBLOCK)
                             .open(fname)
                         {
-                            Ok(mut fid) => {
-                                if let Err(e) = fid.write(&msg.as_bytes()) {
-                                    eprintln!("Error writing to pipe: {}", e);
-                                }
-                                if let Err(e) = fid.flush() {
-                                    eprintln!("Error flushing pipe buffer: {}", e);
-                                }
+                            if let Err(e) = fid.write(&msg.as_bytes()) {
+                                eprintln!("Error writing to pipe: {}", e);
                             }
-                            Err(e) => eprintln!("Error opening pipe: {}", e),
+                            if let Err(e) = fid.flush() {
+                                eprintln!("Error flushing pipe buffer: {}", e);
+                            }
                         }
                     }
                 }
             }
         }
-        thread::sleep(Duration::from_millis(2));    // give the bar time to process the message before allowing the next
+        thread::sleep(Duration::from_millis(2)); // give the bar time to process the message before allowing the next
     }
 }

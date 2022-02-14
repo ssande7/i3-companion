@@ -1,14 +1,11 @@
-use super::{
-    keybinding::KeyBinding,
-    traits::OnEvent,
-};
+use super::{keybinding::KeyBinding, traits::OnEvent};
 use async_trait::async_trait;
+use serde::Deserialize;
 use std::{
     collections::{vec_deque::VecDeque, HashMap, HashSet},
     ops::{Add, AddAssign, Index},
     time::{Duration, Instant},
 };
-use serde::Deserialize;
 use tokio_i3ipc::{
     event as I3Event,
     event::{Event, Subscribe, WorkspaceChange},
@@ -235,28 +232,36 @@ impl WSHistory {
             WSDirection::NEXT => hist_ptr > 0,
         };
         if check_range(hist.hist_ptr) {
-            hist.hist_ptr += dir;
             if self.skip_visible || per_output {
                 if let Ok(workspaces) = i3.get_workspaces().await {
-                    let mut dest_ws = hist.hist_ptr;
-                    while check_range(dest_ws) {
+                    let mut dest_ws = hist.hist_ptr + dir;
+                    loop {
                         if matches!(workspaces.iter().find(|&w| w.num == hist[dest_ws]), Some(ws)
                             if (self.skip_visible && ws.visible) || (per_output && ws.output != self.cur_output))
                         {
                             dest_ws += dir;
                         } else {
                             hist.hist_ptr = dest_ws;
+                            return true;
+                        }
+                        if !check_range(dest_ws) {
                             break;
                         }
                     }
+                    false
+                } else {
+                    hist.hist_ptr += dir;
+                    true
                 }
+            } else {
+                hist.hist_ptr += dir;
+                true
             }
-            true
         } else {
             false
         }
     }
-    
+
     async fn goto_head(&mut self, i3: &mut I3) -> bool {
         self.check_timeout();
         let per_output = match self.hist.hist {
@@ -267,7 +272,9 @@ impl WSHistory {
             Some(hist) => hist,
             None => return false,
         };
-        if hist.hist_ptr == 0 {return false;}
+        if hist.hist_ptr == 0 {
+            return false;
+        }
         hist.hist_ptr = 0;
         let limit = hist.len() - 1;
         if self.skip_visible || per_output {

@@ -1,6 +1,6 @@
+use serde::Deserialize;
 use std::collections::HashSet;
 use tokio_i3ipc::event as I3Event;
-use serde::Deserialize;
 
 #[derive(Clone, Deserialize)]
 pub struct KeyBinding {

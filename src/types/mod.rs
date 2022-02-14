@@ -20,7 +20,7 @@ use self::pipe_sender::PipeSender;
 pub struct I3Timeout(Duration);
 impl From<Duration> for I3Timeout {
     fn from(d: Duration) -> Self {
-        Self {0: d}
+        Self { 0: d }
     }
 }
 impl Default for I3Timeout {
@@ -33,7 +33,7 @@ impl Default for I3Timeout {
 pub struct I3Interval(Duration);
 impl From<Duration> for I3Interval {
     fn from(d: Duration) -> Self {
-        Self {0: d}
+        Self { 0: d }
     }
 }
 impl Default for I3Interval {
@@ -45,7 +45,7 @@ impl Default for I3Interval {
 #[derive(Deserialize, Default)]
 pub struct TomlConfig {
     #[serde(default)]
-    pub connection_timeout: I3Timeout,  // secs
+    pub connection_timeout: I3Timeout, // secs
     #[serde(default)]
     pub connection_interval: I3Interval, // millis
     pub ws_history: Option<WSHistoryConfig>,
@@ -141,7 +141,8 @@ impl TomlConfig {
         .ok_or_else(|| {
             eprintln!("Error reading config file");
             exit(3);
-        }).unwrap();
+        })
+        .unwrap();
 
         toml::from_str(config_content.as_str()).or_else(|e| {
             eprintln!("Error parsing config file:\n{}", e);

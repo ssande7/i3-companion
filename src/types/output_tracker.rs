@@ -1,4 +1,9 @@
-use std::{collections::{HashSet, HashMap}, thread, time::Duration, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -27,10 +32,17 @@ impl From<(OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for OutputTr
     fn from(config: (OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
         let out = Self {
             ipc_str: config.0.ipc_str,
-            pipe: config.1.get(&config.0.pipe_name).unwrap_or_else(|| {
-                eprintln!("ERROR: pipe '{}' not found in config file", config.0.pipe_name);
-                std::process::exit(6);
-            }).clone(),
+            pipe: config
+                .1
+                .get(&config.0.pipe_name)
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "ERROR: pipe '{}' not found in config file",
+                        config.0.pipe_name
+                    );
+                    std::process::exit(6);
+                })
+                .clone(),
         };
         out.spawn_timer(config.0.update_interval);
         out
