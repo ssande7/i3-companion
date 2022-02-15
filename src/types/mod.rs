@@ -1,6 +1,7 @@
 pub mod keybinding;
 pub mod layout_tracker;
 pub mod output_tracker;
+pub mod parsable_duration;
 pub mod pipe_sender;
 pub mod traits;
 pub mod ws_history;
@@ -14,13 +15,13 @@ use toml;
 use traits::OnEvent;
 use ws_history::{WSHistory, WSHistoryConfig};
 
-use self::pipe_sender::PipeSender;
+use self::{pipe_sender::PipeSender, parsable_duration::ParsableDuration};
 
 #[derive(Deserialize)]
-pub struct I3Timeout(Duration);
+pub struct I3Timeout(ParsableDuration);
 impl From<Duration> for I3Timeout {
     fn from(d: Duration) -> Self {
-        Self { 0: d }
+        Self { 0: d.into() }
     }
 }
 impl Default for I3Timeout {
@@ -30,10 +31,10 @@ impl Default for I3Timeout {
 }
 
 #[derive(Deserialize)]
-pub struct I3Interval(Duration);
+pub struct I3Interval(ParsableDuration);
 impl From<Duration> for I3Interval {
     fn from(d: Duration) -> Self {
-        Self { 0: d }
+        Self { 0: d.into() }
     }
 }
 impl Default for I3Interval {
@@ -72,8 +73,8 @@ impl From<TomlConfig> for Config {
             )
         });
         Self {
-            connection_timeout: config.connection_timeout.0,
-            connection_interval: config.connection_interval.0,
+            connection_timeout: config.connection_timeout.0.into(),
+            connection_interval: config.connection_interval.0.into(),
             ws_history: config.ws_history.and_then(|c| Some(c.into())),
             layout_tracker: config.layout_tracker.and_then(|c| {
                 Some(

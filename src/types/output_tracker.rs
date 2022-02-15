@@ -13,6 +13,7 @@ use tokio_i3ipc::{
 };
 
 use super::{
+    parsable_duration::ParsableDuration,
     pipe_sender::PipeSender,
     traits::{OnEvent, OnTimer},
 };
@@ -25,7 +26,7 @@ pub struct OutputTracker {
 pub struct OutputTrackerConfig {
     pub ipc_str: String,
     pub pipe_name: String,
-    pub update_interval: Duration,
+    pub update_interval: ParsableDuration,
 }
 
 impl From<(OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for OutputTracker {
@@ -44,7 +45,7 @@ impl From<(OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for OutputTr
                 })
                 .clone(),
         };
-        out.spawn_timer(config.0.update_interval);
+        out.spawn_timer(config.0.update_interval.into());
         out
     }
 }

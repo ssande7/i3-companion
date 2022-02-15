@@ -1,4 +1,4 @@
-use super::{keybinding::KeyBinding, traits::OnEvent};
+use super::{keybinding::KeyBinding, parsable_duration::ParsableDuration, traits::OnEvent};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::{
@@ -108,7 +108,7 @@ pub struct WSHistory {
     hist: HistoryManager,
     ignore_ctr: usize,
     activity_timer: Instant,
-    activity_timeout: Duration,
+    activity_timeout: Option<Duration>,
     cur_output: String,
     pub skip_visible: bool,
     pub binding_prev: Option<KeyBinding>,
@@ -125,7 +125,7 @@ pub struct WSHistoryConfig {
     pub hist_sz: usize,
     pub hist_type: HistTypeConfig,
     pub skip_visible: bool,
-    pub activity_timeout: Duration,
+    pub activity_timeout: Option<ParsableDuration>,
     pub binding_prev: Option<KeyBinding>,
     pub binding_move_prev: Option<KeyBinding>,
     pub binding_next: Option<KeyBinding>,
@@ -144,7 +144,7 @@ impl Default for WSHistory {
             ignore_ctr: 0,
             cur_output: "".to_string(),
             activity_timer: Instant::now(),
-            activity_timeout: Duration::from_secs(10),
+            activity_timeout: Some(Duration::from_secs(10).into()),
             binding_prev: Some(KeyBinding {
                 event_state_mask: vec!["Mod4".to_string()].into_iter().collect(),
                 symbol: Some("o".into()),
@@ -200,7 +200,7 @@ impl From<WSHistoryConfig> for WSHistory {
             ignore_ctr: 0,
             skip_visible: config.skip_visible,
             activity_timer: Instant::now(),
-            activity_timeout: config.activity_timeout,
+            activity_timeout: config.activity_timeout.map(|d| d.into()),
             cur_output: "".to_string(),
             binding_prev: config.binding_prev,
             binding_move_prev: config.binding_move_prev,
@@ -315,22 +315,26 @@ impl WSHistory {
 
     /// Reset the activity timeout
     fn reset_timer(&mut self) {
-        self.activity_timer = Instant::now() + self.activity_timeout;
+        if let Some(timeout) = self.activity_timeout {
+            self.activity_timer = Instant::now() + timeout;
+        }
     }
 
     /// Check if workspace hasn't been changed since `activity_timer`,
     /// and reset the pointer if so
     fn check_timeout(&mut self) {
-        if self.activity_timeout > Duration::from_secs(0) && Instant::now() > self.activity_timer {
-            match &mut self.hist.hist {
-                HistType::Single(hist) => hist.reset_ptr(),
-                HistType::PerOutput(hist) => {
-                    for (_, h) in hist.iter_mut() {
-                        h.reset_ptr();
+        if let Some(timeout) = self.activity_timeout {
+            if timeout > Duration::from_secs(0) && Instant::now() > self.activity_timer {
+                match &mut self.hist.hist {
+                    HistType::Single(hist) => hist.reset_ptr(),
+                    HistType::PerOutput(hist) => {
+                        for (_, h) in hist.iter_mut() {
+                            h.reset_ptr();
+                        }
                     }
                 }
+                self.reset_timer();
             }
-            self.reset_timer();
         }
     }
 

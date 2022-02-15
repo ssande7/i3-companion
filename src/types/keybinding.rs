@@ -1,7 +1,4 @@
-use serde::{
-    de::Visitor,
-    Deserialize,
-};
+use serde::{de::Visitor, Deserialize};
 use std::collections::HashSet;
 use tokio_i3ipc::event as I3Event;
 
