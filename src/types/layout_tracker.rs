@@ -38,18 +38,17 @@ impl Default for LayoutTracker {
 }
 
 impl From<(LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for LayoutTracker {
-    fn from(config: (LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
+    fn from((config, pipes): (LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
         Self {
             fmt_regex: Regex::new("\\{\\}").unwrap(),
             cur_layout: -1,
-            pipe_echo_fmt: config.0.pipe_echo_fmt,
-            pipe: config
-                .1
-                .get(&config.0.pipe_name)
+            pipe_echo_fmt: config.pipe_echo_fmt,
+            pipe: pipes
+                .get(&config.pipe_name)
                 .unwrap_or_else(|| {
                     eprintln!(
                         "ERROR: pipe '{}' not found in config file",
-                        config.0.pipe_name
+                        config.pipe_name
                     );
                     std::process::exit(6);
                 })

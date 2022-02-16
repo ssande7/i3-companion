@@ -30,22 +30,21 @@ pub struct OutputTrackerConfig {
 }
 
 impl From<(OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for OutputTracker {
-    fn from(config: (OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
+    fn from((config, pipes): (OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
         let out = Self {
-            ipc_str: config.0.ipc_str,
-            pipe: config
-                .1
-                .get(&config.0.pipe_name)
+            ipc_str: config.ipc_str,
+            pipe: pipes
+                .get(&config.pipe_name)
                 .unwrap_or_else(|| {
                     eprintln!(
                         "ERROR: pipe '{}' not found in config file",
-                        config.0.pipe_name
+                        config.pipe_name
                     );
                     std::process::exit(6);
                 })
                 .clone(),
         };
-        if let Some(interval) = config.0.update_interval {
+        if let Some(interval) = config.update_interval {
             out.spawn_timer(interval.into());
         }
         out
