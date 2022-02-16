@@ -26,7 +26,7 @@ pub struct OutputTracker {
 pub struct OutputTrackerConfig {
     pub ipc_str: String,
     pub pipe_name: String,
-    pub update_interval: ParsableDuration,
+    pub update_interval: Option<ParsableDuration>,
 }
 
 impl From<(OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for OutputTracker {
@@ -45,7 +45,9 @@ impl From<(OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for OutputTr
                 })
                 .clone(),
         };
-        out.spawn_timer(config.0.update_interval.into());
+        if let Some(interval) = config.0.update_interval {
+            out.spawn_timer(interval.into());
+        }
         out
     }
 }
