@@ -313,18 +313,15 @@ impl WSHistory {
         }
     }
 
-    /// Reset the activity timeout
-    fn reset_timer(&mut self) {
-        if let Some(timeout) = self.activity_timeout {
-            self.activity_timer = Instant::now() + timeout;
-        }
-    }
-
     /// Check if workspace hasn't been changed since `activity_timer`,
     /// and reset the pointer if so
-    fn check_timeout(&mut self) {
-        if let Some(timeout) = self.activity_timeout {
-            if timeout > Duration::from_secs(0) && Instant::now() > self.activity_timer {
+    /// Also resets the timer (all checks are triggered by user activity)
+    /// Returns true if pointer was reset
+    fn check_timeout(&mut self) -> bool {
+        if let Some(timeout) = &self.activity_timeout {
+            let triggered = Instant::now() > self.activity_timer;
+            self.activity_timer = Instant::now() + *timeout;
+            if triggered {
                 match &mut self.hist.hist {
                     HistType::Single(hist) => hist.reset_ptr(),
                     HistType::PerOutput(hist) => {
@@ -333,13 +330,15 @@ impl WSHistory {
                         }
                     }
                 }
-                self.reset_timer();
             }
+            triggered
+        } else {
+            false
         }
     }
 
     fn swap_ws(&mut self, dir: WSDirection) {
-        self.reset_timer();
+        self.check_timeout();
         let hist = match self.hist.get_mut(&self.cur_output) {
             Some(hist) => hist,
             None => return,
@@ -369,7 +368,7 @@ impl OnEvent for WSHistory {
     async fn handle_event(&mut self, e: &Event, i3: &mut I3) -> Option<String> {
         match e {
             Event::Workspace(ws) => {
-                self.reset_timer();
+                self.check_timeout();
                 if let Some(current) = &ws.current {
                     if let Some(output) = &current.output {
                         self.cur_output = output.clone();
@@ -439,9 +438,12 @@ impl OnEvent for WSHistory {
                             self.swap_ws(WSDirection::NEXT);
                             None
                         } else if matches!(&self.binding_reset, Some(kb) if kb == key) {
-                            self.reset_timer();
-                            if let Some(hist) = self.hist.get_mut(&self.cur_output) {
-                                hist.reset_ptr();
+                            // check timeout resets all history anyway, so no need to re-do if it's
+                            // just been done
+                            if !self.check_timeout() {
+                                if let Some(hist) = self.hist.get_mut(&self.cur_output) {
+                                    hist.reset_ptr();
+                                }
                             }
                             None
                         } else if matches!(&self.binding_to_head, Some(kb) if kb == key) {
