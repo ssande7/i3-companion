@@ -119,11 +119,27 @@ pub struct WSHistory {
     pub binding_swap_next: Option<KeyBinding>,
     pub binding_reset: Option<KeyBinding>,
     pub binding_to_head: Option<KeyBinding>,
+    pub binding_move_to_head: Option<KeyBinding>,
 }
+
+// serde default values
+fn default_hist_sz() -> usize {
+    20
+}
+fn default_skip_visible() -> bool {
+    true
+}
+fn default_hist_type() -> HistTypeConfig {
+    HistTypeConfig::PerOutput
+}
+
 #[derive(Deserialize)]
 pub struct WSHistoryConfig {
+    #[serde(default = "default_hist_sz")]
     pub hist_sz: usize,
+    #[serde(default = "default_hist_type")]
     pub hist_type: HistTypeConfig,
+    #[serde(default = "default_skip_visible")]
     pub skip_visible: bool,
     pub activity_timeout: Option<ParsableDuration>,
     pub binding_prev: Option<KeyBinding>,
@@ -134,13 +150,14 @@ pub struct WSHistoryConfig {
     pub binding_swap_next: Option<KeyBinding>,
     pub binding_reset: Option<KeyBinding>,
     pub binding_to_head: Option<KeyBinding>,
+    pub binding_move_to_head: Option<KeyBinding>,
 }
 
 impl Default for WSHistory {
     fn default() -> Self {
         Self {
-            hist: (HistTypeConfig::PerOutput, 20).into(),
-            skip_visible: true,
+            hist: (default_hist_type(), default_hist_sz()).into(),
+            skip_visible: default_skip_visible(),
             ignore_ctr: 0,
             cur_output: "".to_string(),
             activity_timer: Instant::now(),
@@ -189,6 +206,13 @@ impl Default for WSHistory {
                 symbol: Some("i".into()),
                 input_type: I3Event::BindType::Keyboard,
             }),
+            binding_move_to_head: Some(KeyBinding {
+                event_state_mask: vec!["Mod4".into(), "Mod1".into(), "shift".into()]
+                    .into_iter()
+                    .collect(),
+                symbol: Some("i".into()),
+                input_type: I3Event::BindType::Keyboard,
+            }),
         }
     }
 }
@@ -210,6 +234,7 @@ impl From<WSHistoryConfig> for WSHistory {
             binding_swap_next: config.binding_swap_next,
             binding_reset: config.binding_reset,
             binding_to_head: config.binding_to_head,
+            binding_move_to_head: config.binding_move_to_head,
         }
     }
 }
@@ -451,6 +476,17 @@ impl OnEvent for WSHistory {
                                 self.ignore_ctr += 1;
                                 let hist = self.hist.get(&self.cur_output).unwrap();
                                 Some(format!("workspace number {}", hist[hist.hist_ptr]))
+                            } else {
+                                None
+                            }
+                        } else if matches!(&self.binding_move_to_head, Some(kb) if kb == key) {
+                            if self.goto_head(i3).await {
+                                self.ignore_ctr += 2;
+                                let hist = self.hist.get(&self.cur_output).unwrap();
+                                Some(format!(
+                                    "move container to workspace number {0}; workspace number {0}",
+                                    hist[hist.hist_ptr]
+                                ))
                             } else {
                                 None
                             }
