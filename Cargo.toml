@@ -1,5 +1,5 @@
 [package]
-name = "i3_companion"
+name = "i3-companion"
 version = "0.1.0"
 edition = "2021"
 

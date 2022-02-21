@@ -1,11 +1,12 @@
 # i3-companion
 
 A simple companion tool for i3 that adds a few useful functions:
-* Workspace history as a stack (improved version of `workspace_back_and_forth`)
-* Layout tracking in status bar
-* Output tracking in status bar
+* [Workspace history](#workspace-history) as a stack (a more feature-rich version of `workspace back_and_forth`, similar to vim-style `<C-o>` and `<C-i>`)
+* [Layout tracking](#layout-tracker) in status bar
+* [Output tracking](#output-tracker) in status bar
 
 Command line options:
+
 |Flag         |Args       |Description                  |
 |:------------|:----------|:----------------------------|
 |`-h/--help`  |N/A        |Show usage.                  |
@@ -24,9 +25,21 @@ non-integer) number followed by the time units (ns/us/ms/s/m/h).
 Functionality can be enabled by defining the relevant module as a block in the
 `config.toml` file. Available modules are listed below.
 
+Install with
+```bash
+cargo install --git https://github.com/ssande7/i3-companion
+```
+set up required modules in `~/.config/i3-companion/config.toml`,
+and set to start automatically with i3 by adding:
+```i3
+exec --no-startup-id i3-companion
+```
+to `.i3/config`.
+
 ### Workspace History
 
 Workspace history is kept as a stack that can be traversed and manipulated.
+If the same two workspaces are swapped between multiple times in a row, the stack will attempt to prevent them repeating.
 Configure within the `[ws_history]` block.
 
 Available configuration options are:
@@ -36,7 +49,7 @@ Available configuration options are:
 |`hist_sz`         |usize        |20       |Max. number of workspaces to store in the stack. |
 |`skip_visible`    |bool         |true     |Whether to skip over visible workspaces when traversing the history.|
 |`hist_type`       |"Single" or "PerOutput"|"PerOutput"|Whether to use a single stack, or a stack per output. Per output history will skip over workspaces that have moved to a different output.|
-|`activity_timeout`|Time string  |None     |Time between workspace changes to wait before resetting the stack. Leave unset to disable this behaviour.|
+|`activity_timeout`|Time string  |None     |Time between workspace changes to wait before resetting the stack (see below for what a stack reset looks like). Leave unset to disable this behaviour.|
 
 Stack traversal and manipulation operations are listed below, and are enabled by setting the relevant binding.
 
@@ -74,8 +87,10 @@ Stack traversal and manipulation operations are listed below, and are enabled by
 ### Layout Tracker
 
 Pipes the current i3 layout to the status bar whenever it changes. The
-displayed layout should be the one that new windows will be opened into. As
-some i3 events that change the layout don't send an IPC trigger, the following
+displayed layout should be the one that new windows will be opened into.
+Configure within the `[output_tracker]` block.
+
+As some i3 events that change the layout don't send an IPC trigger, the following
 i3 commands should be followed by `; exec --no-startup-id i3-msg -t send_tick`
 in `.i3/config`:
 * `split <arg>`
@@ -83,9 +98,10 @@ in `.i3/config`:
 * `focus <arg>`
 
 Configuration options:
+
 |Key            |Type     |Description                                      |
 |:--------------|:--------|:------------------------------------------------|
-|`pipe_name`    |String   |Name of the pipe to send the current layout to (as defined in the `[pipes]` block - see below).|
+|`pipe_name`    |String   |Name of the pipe to send the current layout to (as defined in the `[pipes]` block - [see below](#pipes)).|
 |`pipe_echo_fmt`|Format string|String to format the layout number with before sending. Use `{}` where the layout number should be inserted, or `{0}` if it should be inserted in multiple places.|
 
 > **Example**
@@ -105,29 +121,43 @@ Configuration options:
 >
 > [module/i3_layout]
 > type = custom/ipc
+> ; split horizontal
 > hook-0 = echo 󰧁
+> ; split vertical
 > hook-1 = echo 󰧈
+> ; stacked
 > hook-2 = echo 󰉕 
+> ; tabbed
 > hook-3 = echo 󰉖 
-> ; The following are theoretically possible, but generally don't come up
+> ; The following are theoretically possible, but generally
+> ; don't come up as the layout tracker shows the layout that
+> ; a new window will be opened into.
+> ; dock
 > hook-4 = echo ⚓
+> ; fullscreen
 > hook-5 = echo 󰍹 
+> ; floating
 > hook-6 = echo 󰞷
 > initial = 1
 > ; NOTE: 1 corresponds to hook-0, 2 to hook-1, etc...
 > ```
 
-> **NOTE:** This module was designed to work with [polybar](https://polybar.github.io/), but should also be compatible with other bars. Layout numbers start from 1, since polybar uses 1-based idexing
+> **NOTE:** This module was designed to work with
+> [polybar](https://polybar.github.io/), but should also be compatible with
+> some other bars. Layout numbers output by the `[layout_tracker]` module start
+> from 1, since polybar uses 1-based indexing for IPC hooks.
 
 ### Output Tracker
 
 Pipes a pre-defined message to the status bar whenever the output changes.
 The message can also optionally be sent periodically.
+Configure within the `[output_tracker]` block.
 
 Configuration options:
+
 |Key              |Type       |Description                                      |
 |:----------------|:----------|:------------------------------------------------|
-|`pipe_name`      |String     |Name of the pipe to send `ipc_str` to (as defined in the `[pipes]` block - see below).|
+|`pipe_name`      |String     |Name of the pipe to send `ipc_str` to (as defined in the `[pipes]` block - [see below](#pipes)).|
 |`ipc_str`        |String     |String to be sent to the bar's named pipe.       |
 |`update_interval`|Time string|Interval at which to `ipc_str` (in addition to on output changes). Leave unset to disable periodic sending.|
 
@@ -162,6 +192,7 @@ Configuration options:
 > echo "%{B${color}}$(date '+%a %d %b %_I:%M %p')%{B-}"
 > ```
 > ```toml
+> # .config/i3-companion/config.toml
 > [output_tracker]
 > ipc_str = "hook:module/date1"
 > pipe_name = "polybar"
@@ -173,8 +204,7 @@ Configuration options:
 
 > **NOTE:** This module was designed to work with
 > [polybar](https://polybar.github.io/), but should also be compatible with
-> other bars. Layout numbers start from 1, since polybar uses 1-based indexing
-> for IPC hooks.
+> some other bars.
 
 ### Pipes
 
