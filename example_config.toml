@@ -1,0 +1,29 @@
+connection_timeout = "3s"   # Optional, default 3s
+reconnect_interval = "3ms"  # Optional, default 3ms
+
+[ws_history]
+hist_sz = 20
+hist_type = "PerOutput"
+skip_visible = true
+activity_timeout = "10s"
+binding_prev = "Mod4+o"
+binding_next = "Mod4+i"
+binding_move_prev = "Mod4+shift+o"
+binding_move_next = "Mod4+shift+i"
+binding_swap_prev = "Mod4+ctrl+o"
+binding_swap_next = "Mod4+ctrl+i"
+binding_reset = "Mod4+ctrl+shift+o"
+binding_to_head = "Mod4+ctrl+shift+i"
+binding_move_to_head = "Mod4+Mod1+shift+i"
+
+[layout_tracker]
+pipe_echo_fmt = "hook:module/i3_layout{}"
+pipe_name = "polybar"   # Must match a definition in the [pipes] section
+
+[output_tracker]
+ipc_str = "hook:module/date1"
+pipe_name = "polybar"
+update_interval = "5s"
+
+[pipes]
+polybar = "/tmp/polybar_mqueue.*"
