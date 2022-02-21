@@ -56,8 +56,7 @@ async fn listener(mut config: Config) -> io::Result<()> {
     loop {
         let mut i3 =
             try_i3_connection(config.connection_timeout, config.reconnect_interval).await?;
-        let resp = i3.subscribe(&subs).await?;
-        println!("Response: {:#?}", resp);
+        let _resp = i3.subscribe(&subs).await?;
 
         // Need separate tx and rx connections, since sending and receiving on the same connection
         // can cause messages to get missed/jumbled.
