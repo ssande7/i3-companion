@@ -8,7 +8,7 @@ use tokio_i3ipc::{
 use tokio_stream::StreamExt;
 
 mod types;
-use types::{Config, TomlConfig};
+use types::config::{Config, TomlConfig};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
@@ -18,10 +18,6 @@ async fn main() -> io::Result<()> {
             exit(8)
         })
         .into();
-    // config.ws_history = Some(WSHistory::default());
-    // config.layout_tracker = Some(LayoutTracker::default());
-    // config.output_tracker = Some(OutputTracker::default());
-    // let polybar = Arc::new(PipeSender::new("/tmp/polybar_mqueue.*".into()));
     listener(config).await
 }
 
@@ -59,7 +55,7 @@ async fn listener(mut config: Config) -> io::Result<()> {
 
     loop {
         let mut i3 =
-            try_i3_connection(config.connection_timeout, config.connection_interval).await?;
+            try_i3_connection(config.connection_timeout, config.reconnect_interval).await?;
         let resp = i3.subscribe(&subs).await?;
         println!("Response: {:#?}", resp);
 
