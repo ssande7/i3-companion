@@ -416,80 +416,78 @@ impl OnEvent for WSHistory {
                 None
             }
             Event::Binding(key) => {
-                if self.hist.get(&self.cur_output).is_some() {
-                    if self.hist.get(&self.cur_output).unwrap().len() > 0 {
-                        if matches!(&self.binding_prev, Some(kb) if kb == key) {
-                            if self.get_ws(WSDirection::PREV, i3).await {
-                                self.ignore_ctr += 1;
-                                let hist = self.hist.get(&self.cur_output).unwrap();
-                                Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                            } else {
-                                None
-                            }
-                        } else if matches!(&self.binding_move_prev, Some(kb) if kb == key) {
-                            if self.get_ws(WSDirection::PREV, i3).await {
-                                self.ignore_ctr += 2;
-                                let hist = self.hist.get(&self.cur_output).unwrap();
-                                Some(format!(
-                                    "move container to workspace number {0}; workspace number {0}",
-                                    hist[hist.hist_ptr]
-                                ))
-                            } else {
-                                None
-                            }
-                        } else if matches!(&self.binding_next, Some(kb) if kb == key) {
-                            if self.get_ws(WSDirection::NEXT, i3).await {
-                                self.ignore_ctr += 1;
-                                let hist = self.hist.get(&self.cur_output).unwrap();
-                                Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                            } else {
-                                None
-                            }
-                        } else if matches!(&self.binding_move_next, Some(kb) if kb == key) {
-                            if self.get_ws(WSDirection::NEXT, i3).await {
-                                self.ignore_ctr += 2;
-                                let hist = self.hist.get(&self.cur_output).unwrap();
-                                Some(format!(
-                                    "move container to workspace number {0}; workspace number {0}",
-                                    hist[hist.hist_ptr]
-                                ))
-                            } else {
-                                None
-                            }
-                        } else if matches!(&self.binding_swap_prev, Some(kb) if kb == key) {
-                            self.swap_ws(WSDirection::PREV);
+                if self.hist.get(&self.cur_output).is_some()
+                    && self.hist.get(&self.cur_output).unwrap().len() > 0
+                {
+                    if matches!(&self.binding_prev, Some(kb) if kb == key) {
+                        if self.get_ws(WSDirection::PREV, i3).await {
+                            self.ignore_ctr += 1;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
+                        } else {
                             None
-                        } else if matches!(&self.binding_swap_next, Some(kb) if kb == key) {
-                            self.swap_ws(WSDirection::NEXT);
+                        }
+                    } else if matches!(&self.binding_move_prev, Some(kb) if kb == key) {
+                        if self.get_ws(WSDirection::PREV, i3).await {
+                            self.ignore_ctr += 2;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!(
+                                "move container to workspace number {0}; workspace number {0}",
+                                hist[hist.hist_ptr]
+                            ))
+                        } else {
                             None
-                        } else if matches!(&self.binding_reset, Some(kb) if kb == key) {
-                            // check timeout resets all history anyway, so no need to re-do if it's
-                            // just been done
-                            if !self.check_timeout() {
-                                if let Some(hist) = self.hist.get_mut(&self.cur_output) {
-                                    hist.reset_ptr();
-                                }
-                            }
+                        }
+                    } else if matches!(&self.binding_next, Some(kb) if kb == key) {
+                        if self.get_ws(WSDirection::NEXT, i3).await {
+                            self.ignore_ctr += 1;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
+                        } else {
                             None
-                        } else if matches!(&self.binding_to_head, Some(kb) if kb == key) {
-                            if self.goto_head(i3).await {
-                                self.ignore_ctr += 1;
-                                let hist = self.hist.get(&self.cur_output).unwrap();
-                                Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                            } else {
-                                None
+                        }
+                    } else if matches!(&self.binding_move_next, Some(kb) if kb == key) {
+                        if self.get_ws(WSDirection::NEXT, i3).await {
+                            self.ignore_ctr += 2;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!(
+                                "move container to workspace number {0}; workspace number {0}",
+                                hist[hist.hist_ptr]
+                            ))
+                        } else {
+                            None
+                        }
+                    } else if matches!(&self.binding_swap_prev, Some(kb) if kb == key) {
+                        self.swap_ws(WSDirection::PREV);
+                        None
+                    } else if matches!(&self.binding_swap_next, Some(kb) if kb == key) {
+                        self.swap_ws(WSDirection::NEXT);
+                        None
+                    } else if matches!(&self.binding_reset, Some(kb) if kb == key) {
+                        // check timeout resets all history anyway, so no need to re-do if it's
+                        // just been done
+                        if !self.check_timeout() {
+                            if let Some(hist) = self.hist.get_mut(&self.cur_output) {
+                                hist.reset_ptr();
                             }
-                        } else if matches!(&self.binding_move_to_head, Some(kb) if kb == key) {
-                            if self.goto_head(i3).await {
-                                self.ignore_ctr += 2;
-                                let hist = self.hist.get(&self.cur_output).unwrap();
-                                Some(format!(
-                                    "move container to workspace number {0}; workspace number {0}",
-                                    hist[hist.hist_ptr]
-                                ))
-                            } else {
-                                None
-                            }
+                        }
+                        None
+                    } else if matches!(&self.binding_to_head, Some(kb) if kb == key) {
+                        if self.goto_head(i3).await {
+                            self.ignore_ctr += 1;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
+                        } else {
+                            None
+                        }
+                    } else if matches!(&self.binding_move_to_head, Some(kb) if kb == key) {
+                        if self.goto_head(i3).await {
+                            self.ignore_ctr += 2;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!(
+                                "move container to workspace number {0}; workspace number {0}",
+                                hist[hist.hist_ptr]
+                            ))
                         } else {
                             None
                         }
