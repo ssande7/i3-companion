@@ -338,6 +338,31 @@ impl WSHistory {
         }
     }
 
+    /// Go to the next/previous workspace and remove the current one from the stack
+    async fn rem_ws(&mut self, dir: WSDirection, i3: &mut I3) -> bool {
+        self.check_timeout();
+        let cur_ptr = {
+            let hist = match self.hist.get(&self.cur_output) {
+                Some(hist) => hist,
+                None => return false,
+            };
+            hist.hist_ptr
+        };
+        if self.get_ws(dir, i3).await {
+            let hist = match self.hist.get_mut(&self.cur_output) {
+                Some(hist) => hist,
+                None => return false,
+            };
+            hist.hist.remove(cur_ptr);
+            if cur_ptr < hist.hist_ptr {
+                hist.hist_ptr -= 1;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
     /// Check if workspace hasn't been changed since `activity_timer`,
     /// and reset the pointer if so
     /// Also resets the timer (all checks are triggered by user activity)
@@ -491,6 +516,7 @@ impl OnEvent for WSHistory {
                         } else {
                             None
                         }
+                    // TODO: alt+o, alt+i for rem_ws()
                     } else {
                         None
                     }
@@ -505,7 +531,9 @@ impl OnEvent for WSHistory {
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum WSDirection {
+    /// Newer workspaces (towards the top of the stack, `hist_ptr -= x`)
     NEXT,
+    /// Older workspaces (towards the bottom of the stack, `hist_ptr += x`)
     PREV,
 }
 impl From<i32> for WSDirection {
