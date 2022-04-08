@@ -120,6 +120,8 @@ pub struct WSHistory {
     pub binding_reset: Option<KeyBinding>,
     pub binding_to_head: Option<KeyBinding>,
     pub binding_move_to_head: Option<KeyBinding>,
+    pub binding_rem_and_prev: Option<KeyBinding>,
+    pub binding_rem_and_next: Option<KeyBinding>,
 }
 
 // serde default values
@@ -151,6 +153,8 @@ pub struct WSHistoryConfig {
     pub binding_reset: Option<KeyBinding>,
     pub binding_to_head: Option<KeyBinding>,
     pub binding_move_to_head: Option<KeyBinding>,
+    pub binding_rem_and_prev: Option<KeyBinding>,
+    pub binding_rem_and_next: Option<KeyBinding>,
 }
 
 impl Default for WSHistory {
@@ -213,6 +217,20 @@ impl Default for WSHistory {
                 symbol: Some("i".into()),
                 input_type: I3Event::BindType::Keyboard,
             }),
+            binding_rem_and_prev: Some(KeyBinding {
+                event_state_mask: vec!["Mod4".into(), "Mod1".into()]
+                    .into_iter()
+                    .collect(),
+                symbol: Some("o".into()),
+                input_type: I3Event::BindType::Keyboard,
+            }),
+            binding_rem_and_next: Some(KeyBinding {
+                event_state_mask: vec!["Mod4".into(), "Mod1".into()]
+                    .into_iter()
+                    .collect(),
+                symbol: Some("i".into()),
+                input_type: I3Event::BindType::Keyboard,
+            }),
         }
     }
 }
@@ -235,6 +253,8 @@ impl From<WSHistoryConfig> for WSHistory {
             binding_reset: config.binding_reset,
             binding_to_head: config.binding_to_head,
             binding_move_to_head: config.binding_move_to_head,
+            binding_rem_and_prev: config.binding_rem_and_prev,
+            binding_rem_and_next: config.binding_rem_and_next,
         }
     }
 }
@@ -516,7 +536,22 @@ impl OnEvent for WSHistory {
                         } else {
                             None
                         }
-                    // TODO: alt+o, alt+i for rem_ws()
+                    } else if matches!(&self.binding_rem_and_prev, Some(kb) if kb == key) {
+                        if self.rem_ws(WSDirection::PREV, i3).await {
+                            self.ignore_ctr += 1;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
+                        } else {
+                            None
+                        }
+                    } else if matches!(&self.binding_rem_and_next, Some(kb) if kb == key) {
+                        if self.rem_ws(WSDirection::NEXT, i3).await {
+                            self.ignore_ctr += 1;
+                            let hist = self.hist.get(&self.cur_output).unwrap();
+                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }

@@ -64,6 +64,8 @@ Stack traversal and manipulation operations are listed below, and are enabled by
 |Jump to head      |`binding_to_head`     |Jump focus back to the head of the stack. Eg. 1, 2, 3*, 4 becomes 1*, 2, 3, 4, where * marks the focused workspace.|
 |Move to head      |`binding_move_to_head`|Move container to the workspace at the head of the stack and focus it.|
 |Reset stack       |`binding_reset`       |Reset the stack so that the focused workspace is on top. Workspaces that were above it are reversed in order. Eg. 1, 2, 3, 4*, 5, 6 becomes 4*, 3, 2, 1, 5, 6, where * marks the focused workspace.|
+|Remove WS and go to prev. |`binding_rem_and_prev` |Remove the current workspace from the stack and go to the previous one. Eg. 1, 2*, 3, 4, 2 becomes 1, 3*, 4, 2, where * marks the focused workspace.|
+|Remove WS and go to next  |`binding_rem_and_next` |Remove the current workspace from the stack and go to the next one. Eg. 1, 2*, 3, 4, 2 becomes 1*, 3, 4, 2, where * marks the focused workspace.|
 
 >  NOTE: Key presses are registered via the i3 IPC, so you will also need to set the binding in your i3 config. For example:
 >

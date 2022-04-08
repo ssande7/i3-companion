@@ -15,6 +15,8 @@ binding_swap_next = "Mod4+ctrl+i"
 binding_reset = "Mod4+ctrl+shift+o"
 binding_to_head = "Mod4+ctrl+shift+i"
 binding_move_to_head = "Mod4+Mod1+shift+i"
+binding_rem_and_prev = "Mod4+Mod1+o"
+binding_rem_and_next = "Mod4+Mod1+i"
 
 [layout_tracker]
 pipe_echo_fmt = "hook:module/i3_layout{}"
