@@ -307,6 +307,7 @@ impl WSHistory {
         }
     }
 
+    /// Jump to the top workspace in the stack
     async fn goto_head(&mut self, i3: &mut I3) -> bool {
         self.check_timeout();
         let per_output = match self.hist.hist {
@@ -407,6 +408,10 @@ impl WSHistory {
         }
     }
 
+    /// Swap the position of the next/previous two workspaces in the stack
+    // TODO: make this correctly skip over workspaces that have moved to a
+    //       different output. Maybe refactor get_ws() to just return the
+    //       next/previous ws from a given starting point?
     fn swap_ws(&mut self, dir: WSDirection) {
         self.check_timeout();
         let hist = match self.hist.get_mut(&self.cur_output) {
