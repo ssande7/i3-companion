@@ -12,11 +12,14 @@ use tokio_i3ipc::{
     I3,
 };
 
+/// Config setting for history stack type
 #[derive(Clone, Copy, Deserialize)]
 pub enum HistTypeConfig {
     Single,
     PerOutput,
 }
+
+/// History stack type (single or per-output)
 enum HistType {
     Single(History),
     PerOutput(HashMap<String, History>),
@@ -29,6 +32,8 @@ impl From<(HistTypeConfig, usize)> for HistType {
         }
     }
 }
+
+/// History stack
 struct History {
     hist: VecDeque<i32>,
     hist_ptr: usize,
@@ -66,6 +71,7 @@ impl Index<usize> for History {
     }
 }
 
+/// Internal manager for workspace history stack
 struct HistoryManager {
     hist: HistType,
     hist_sz: usize,
@@ -104,6 +110,7 @@ impl HistoryManager {
     }
 }
 
+/// Interface class for workspace history stack
 pub struct WSHistory {
     hist: HistoryManager,
     ignore_ctr: usize,
@@ -135,6 +142,7 @@ fn default_hist_type() -> HistTypeConfig {
     HistTypeConfig::PerOutput
 }
 
+/// Config input for `WSHistory`
 #[derive(Deserialize)]
 pub struct WSHistoryConfig {
     #[serde(default = "default_hist_sz")]
@@ -218,16 +226,12 @@ impl Default for WSHistory {
                 input_type: I3Event::BindType::Keyboard,
             }),
             binding_rem_and_prev: Some(KeyBinding {
-                event_state_mask: vec!["Mod4".into(), "Mod1".into()]
-                    .into_iter()
-                    .collect(),
+                event_state_mask: vec!["Mod4".into(), "Mod1".into()].into_iter().collect(),
                 symbol: Some("o".into()),
                 input_type: I3Event::BindType::Keyboard,
             }),
             binding_rem_and_next: Some(KeyBinding {
-                event_state_mask: vec!["Mod4".into(), "Mod1".into()]
-                    .into_iter()
-                    .collect(),
+                event_state_mask: vec!["Mod4".into(), "Mod1".into()].into_iter().collect(),
                 symbol: Some("i".into()),
                 input_type: I3Event::BindType::Keyboard,
             }),
@@ -260,71 +264,76 @@ impl From<WSHistoryConfig> for WSHistory {
 }
 
 impl WSHistory {
-    /// Get the next or previous workspace from the history
-    async fn get_ws(&mut self, dir: WSDirection, i3: &mut I3) -> bool {
-        self.check_timeout();
+    /// Get the next or previous workspace from the history stack, relative to `cur_ws`
+    /// Returns the index in the stack of that workspace if there is one available in that
+    /// direction. Otherwise returns `None`.
+    async fn get_ws(&self, cur_ws: usize, dir: WSDirection, i3: &mut I3) -> Option<usize> {
         let per_output = match self.hist.hist {
             HistType::PerOutput(_) => true,
             _ => false,
         };
-        let hist = match self.hist.get_mut(&self.cur_output) {
-            Some(hist) => hist,
-            None => return false,
-        };
+        let hist = self.hist.get(&self.cur_output)?;
         let limit = hist.len() - 1;
         let check_range = |hist_ptr| match dir {
             WSDirection::PREV => hist_ptr < limit,
             WSDirection::NEXT => hist_ptr > 0,
         };
-        if check_range(hist.hist_ptr) {
+        if check_range(cur_ws) {
             if self.skip_visible || per_output {
                 if let Ok(workspaces) = i3.get_workspaces().await {
-                    let mut dest_ws = hist.hist_ptr + dir;
+                    let mut dest_ws = cur_ws + dir;
                     loop {
                         if matches!(workspaces.iter().find(|&w| w.num == hist[dest_ws]), Some(ws)
                             if (self.skip_visible && ws.visible) || (per_output && ws.output != self.cur_output))
                         {
                             dest_ws += dir;
                         } else {
-                            hist.hist_ptr = dest_ws;
-                            return true;
+                            return Some(dest_ws);
                         }
                         if !check_range(dest_ws) {
                             break;
                         }
                     }
-                    false
+                    None
                 } else {
-                    hist.hist_ptr += dir;
-                    true
+                    Some(cur_ws + dir)
                 }
             } else {
-                hist.hist_ptr += dir;
-                true
+                Some(cur_ws + dir)
             }
         } else {
-            false
+            None
         }
     }
 
-    /// Jump to the top workspace in the stack
-    async fn goto_head(&mut self, i3: &mut I3) -> bool {
+    /// Go to the next or previous workspace in the stack.
+    /// Returns `None` if workspace didn't change, or `Some(new_ws)` if it did
+    async fn goto_ws(&mut self, dir: WSDirection, i3: &mut I3) -> Option<i32> {
+        self.check_timeout();
+        let hist = self.hist.get(&self.cur_output)?;
+        let new_ws = self.get_ws(hist.hist_ptr, dir, i3).await?;
+        let hist = self.hist.get_mut(&self.cur_output)?;
+        hist.hist_ptr = new_ws;
+        Some(hist.hist[hist.hist_ptr])
+    }
+
+    /// Jump to the top workspace in the stack.
+    /// Returns `Some(new_ws)` if stack pointer changed, `None` otherwise.
+    async fn goto_head(&mut self, i3: &mut I3) -> Option<i32> {
         self.check_timeout();
         let per_output = match self.hist.hist {
             HistType::PerOutput(_) => true,
             _ => false,
         };
-        let hist = match self.hist.get_mut(&self.cur_output) {
-            Some(hist) => hist,
-            None => return false,
-        };
+        let hist = self.hist.get_mut(&self.cur_output)?;
         if hist.hist_ptr == 0 {
-            return false;
+            return None;
         }
+        let old_ptr = hist.hist_ptr;
         hist.hist_ptr = 0;
-        let limit = hist.len() - 1;
         if self.skip_visible || per_output {
             if let Ok(workspaces) = i3.get_workspaces().await {
+                let limit = hist.len() - 1;
                 let mut dest_ws = hist.hist_ptr;
                 while dest_ws < limit {
                     if matches!(workspaces.iter().find(|&w| w.num == hist[dest_ws]), Some(ws)
@@ -338,7 +347,11 @@ impl WSHistory {
                 }
             }
         }
-        true
+        if hist.hist_ptr != old_ptr {
+            Some(hist.hist[hist.hist_ptr])
+        } else {
+            None
+        }
     }
 
     /// Add `ws_num` to the history, resetting the history pointer
@@ -360,27 +373,23 @@ impl WSHistory {
     }
 
     /// Go to the next/previous workspace and remove the current one from the stack
-    async fn rem_ws(&mut self, dir: WSDirection, i3: &mut I3) -> bool {
+    /// Returns the workspace number of the new workspace if it changed
+    async fn rem_ws(&mut self, dir: WSDirection, i3: &mut I3) -> Option<i32> {
         self.check_timeout();
         let cur_ptr = {
-            let hist = match self.hist.get(&self.cur_output) {
-                Some(hist) => hist,
-                None => return false,
-            };
+            let hist = self.hist.get(&self.cur_output)?;
             hist.hist_ptr
         };
-        if self.get_ws(dir, i3).await {
-            let hist = match self.hist.get_mut(&self.cur_output) {
-                Some(hist) => hist,
-                None => return false,
-            };
+        if let Some(new_ws) = self.get_ws(cur_ptr, dir, i3).await {
+            let hist = self.hist.get_mut(&self.cur_output)?;
             hist.hist.remove(cur_ptr);
+            hist.hist_ptr = new_ws;
             if cur_ptr < hist.hist_ptr {
                 hist.hist_ptr -= 1;
             }
-            true
+            Some(hist.hist[hist.hist_ptr])
         } else {
-            false
+            None
         }
     }
 
@@ -408,26 +417,21 @@ impl WSHistory {
         }
     }
 
-    /// Swap the position of the next/previous two workspaces in the stack
-    // TODO: make this correctly skip over workspaces that have moved to a
-    //       different output. Maybe refactor get_ws() to just return the
-    //       next/previous ws from a given starting point?
-    fn swap_ws(&mut self, dir: WSDirection) {
+    /// Swap the position of the next/previous two workspaces in the stack.
+    /// Aware of PerOutput and skip_visible settings
+    async fn swap_ws(&mut self, dir: WSDirection, i3: &mut I3) {
         self.check_timeout();
-        let hist = match self.hist.get_mut(&self.cur_output) {
-            Some(hist) => hist,
+        let hist_ptr = match self.hist.get(&self.cur_output) {
+            Some(hist) => hist.hist_ptr,
             None => return,
         };
-        match dir {
-            WSDirection::NEXT => {
-                if hist.hist_ptr > 1 {
-                    hist.hist.swap(hist.hist_ptr - 1, hist.hist_ptr - 2);
-                }
-            }
-            WSDirection::PREV => {
-                if hist.hist_ptr < hist.len() - 2 {
-                    hist.hist.swap(hist.hist_ptr + 1, hist.hist_ptr + 2);
-                }
+        if let Some(next_ws) = self.get_ws(hist_ptr, dir, i3).await {
+            if let Some(next_ws2) = self.get_ws(next_ws, dir, i3).await {
+                self.hist
+                    .get_mut(&self.cur_output)
+                    .unwrap()
+                    .hist
+                    .swap(next_ws, next_ws2);
             }
         }
     }
@@ -470,48 +474,44 @@ impl OnEvent for WSHistory {
                     && self.hist.get(&self.cur_output).unwrap().len() > 0
                 {
                     if matches!(&self.binding_prev, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::PREV, i3).await {
-                            self.ignore_ctr += 1;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                        } else {
-                            None
-                        }
+                        self.goto_ws(WSDirection::PREV, i3)
+                            .await
+                            .and_then(|new_ws| {
+                                self.ignore_ctr += 1;
+                                Some(format!("workspace number {}", new_ws))
+                            })
                     } else if matches!(&self.binding_move_prev, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::PREV, i3).await {
-                            self.ignore_ctr += 2;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!(
-                                "move container to workspace number {0}; workspace number {0}",
-                                hist[hist.hist_ptr]
-                            ))
-                        } else {
-                            None
-                        }
+                        self.goto_ws(WSDirection::PREV, i3)
+                            .await
+                            .and_then(|new_ws| {
+                                self.ignore_ctr += 2;
+                                Some(format!(
+                                    "move container to workspace number {0}; workspace number {0}",
+                                    new_ws
+                                ))
+                            })
                     } else if matches!(&self.binding_next, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::NEXT, i3).await {
-                            self.ignore_ctr += 1;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                        } else {
-                            None
-                        }
+                        self.goto_ws(WSDirection::NEXT, i3)
+                            .await
+                            .and_then(|new_ws| {
+                                self.ignore_ctr += 1;
+                                Some(format!("workspace number {}", new_ws))
+                            })
                     } else if matches!(&self.binding_move_next, Some(kb) if kb == key) {
-                        if self.get_ws(WSDirection::NEXT, i3).await {
-                            self.ignore_ctr += 2;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!(
-                                "move container to workspace number {0}; workspace number {0}",
-                                hist[hist.hist_ptr]
-                            ))
-                        } else {
-                            None
-                        }
+                        self.goto_ws(WSDirection::NEXT, i3)
+                            .await
+                            .and_then(|new_ws| {
+                                self.ignore_ctr += 2;
+                                Some(format!(
+                                    "move container to workspace number {0}; workspace number {0}",
+                                    new_ws
+                                ))
+                            })
                     } else if matches!(&self.binding_swap_prev, Some(kb) if kb == key) {
-                        self.swap_ws(WSDirection::PREV);
+                        self.swap_ws(WSDirection::PREV, i3).await;
                         None
                     } else if matches!(&self.binding_swap_next, Some(kb) if kb == key) {
-                        self.swap_ws(WSDirection::NEXT);
+                        self.swap_ws(WSDirection::NEXT, i3).await;
                         None
                     } else if matches!(&self.binding_reset, Some(kb) if kb == key) {
                         // check timeout resets all history anyway, so no need to re-do if it's
@@ -523,40 +523,32 @@ impl OnEvent for WSHistory {
                         }
                         None
                     } else if matches!(&self.binding_to_head, Some(kb) if kb == key) {
-                        if self.goto_head(i3).await {
-                            self.ignore_ctr += 1;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                        } else {
-                            None
-                        }
+                        self.goto_head(i3)
+                            .await
+                            .and_then(|new_ws| {
+                                self.ignore_ctr += 1;
+                                Some(format!("workspace number {}", new_ws))
+                            })
                     } else if matches!(&self.binding_move_to_head, Some(kb) if kb == key) {
-                        if self.goto_head(i3).await {
-                            self.ignore_ctr += 2;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!(
-                                "move container to workspace number {0}; workspace number {0}",
-                                hist[hist.hist_ptr]
-                            ))
-                        } else {
-                            None
-                        }
+                        self.goto_head(i3)
+                            .await
+                            .and_then(|new_ws| {
+                                self.ignore_ctr += 2;
+                                Some(format!(
+                                    "move container to workspace number {0}; workspace number {0}",
+                                    new_ws
+                                ))
+                            })
                     } else if matches!(&self.binding_rem_and_prev, Some(kb) if kb == key) {
-                        if self.rem_ws(WSDirection::PREV, i3).await {
+                        self.rem_ws(WSDirection::PREV, i3).await.and_then(|new_ws| {
                             self.ignore_ctr += 1;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                        } else {
-                            None
-                        }
+                            Some(format!("workspace number {}", new_ws))
+                        })
                     } else if matches!(&self.binding_rem_and_next, Some(kb) if kb == key) {
-                        if self.rem_ws(WSDirection::NEXT, i3).await {
+                        self.rem_ws(WSDirection::NEXT, i3).await.and_then(|new_ws| {
                             self.ignore_ctr += 1;
-                            let hist = self.hist.get(&self.cur_output).unwrap();
-                            Some(format!("workspace number {}", hist[hist.hist_ptr]))
-                        } else {
-                            None
-                        }
+                            Some(format!("workspace number {}", new_ws))
+                        })
                     } else {
                         None
                     }
