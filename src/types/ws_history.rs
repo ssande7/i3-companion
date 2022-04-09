@@ -110,7 +110,7 @@ impl HistoryManager {
     }
 }
 
-/// Interface class for workspace history stack
+/// Interface struct for workspace history stack
 pub struct WSHistory {
     hist: HistoryManager,
     ignore_ctr: usize,
