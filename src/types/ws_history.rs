@@ -314,7 +314,7 @@ impl WSHistory {
         let new_ws = self.get_ws(hist.hist_ptr, dir, i3).await?;
         let hist = self.hist.get_mut(&self.cur_output)?;
         hist.hist_ptr = new_ws;
-        Some(hist.hist[hist.hist_ptr])
+        Some(hist[hist.hist_ptr])
     }
 
     /// Jump to the top workspace in the stack.
@@ -348,7 +348,7 @@ impl WSHistory {
             }
         }
         if hist.hist_ptr != old_ptr {
-            Some(hist.hist[hist.hist_ptr])
+            Some(hist[hist.hist_ptr])
         } else {
             None
         }
@@ -387,7 +387,7 @@ impl WSHistory {
             if cur_ptr < hist.hist_ptr {
                 hist.hist_ptr -= 1;
             }
-            Some(hist.hist[hist.hist_ptr])
+            Some(hist[hist.hist_ptr])
         } else {
             None
         }
