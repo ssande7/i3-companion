@@ -16,11 +16,12 @@ use super::{
     parsable_duration::ParsableDuration,
     pipe_sender::PipeSender,
     traits::{OnEvent, OnTimer},
+    MsgSender,
 };
 
 pub struct OutputTracker {
     pub ipc_str: String,
-    pub pipe: Arc<PipeSender>,
+    pub pipe: Arc<dyn MsgSender + Send + Sync>,
 }
 #[derive(Deserialize)]
 pub struct OutputTrackerConfig {
@@ -29,8 +30,8 @@ pub struct OutputTrackerConfig {
     pub update_interval: Option<ParsableDuration>,
 }
 
-impl From<(OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for OutputTracker {
-    fn from((config, pipes): (OutputTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
+impl From<(OutputTrackerConfig, &HashMap<String, Arc<dyn MsgSender + Send + Sync>>)> for OutputTracker {
+    fn from((config, pipes): (OutputTrackerConfig, &HashMap<String, Arc<dyn MsgSender + Send + Sync>>)) -> Self {
         let out = Self {
             ipc_str: config.ipc_str,
             pipe: pipes

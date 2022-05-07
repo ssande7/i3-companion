@@ -111,10 +111,10 @@ Configuration options:
 > # .config/i3-companion/config.toml
 > [layout_tracker]
 > pipe_name = "polybar"
-> pipe_echo_fmt = "hook:module/i3_layout{}"
+> pipe_echo_fmt = "action '#i3_layout.hook.{}'"
 >
 > [pipes]
-> polybar = "/tmp/polybar_mqueue.*"
+> polybar = ["SHELL", "polybar-msg"]
 > ```
 > ```ini
 > ; .config/polybar/config
@@ -131,9 +131,6 @@ Configuration options:
 > hook-2 = echo 󰉕 
 > ; tabbed
 > hook-3 = echo 󰉖 
-> ; The following are theoretically possible, but generally
-> ; don't come up as the layout tracker shows the layout that
-> ; a new window will be opened into.
 > ; dock
 > hook-4 = echo ⚓
 > ; fullscreen
@@ -141,13 +138,14 @@ Configuration options:
 > ; floating
 > hook-6 = echo 󰞷
 > initial = 1
-> ; NOTE: 1 corresponds to hook-0, 2 to hook-1, etc...
 > ```
 
 > **NOTE:** This module was designed to work with
 > [polybar](https://polybar.github.io/), but should also be compatible with
 > some other bars. Layout numbers output by the `[layout_tracker]` module start
-> from 1, since polybar uses 1-based indexing for IPC hooks.
+> from 0. If necessary, a `SHELL` type pipe can be specified that calls an
+> intermediate processing script for switching to 1-based indexing or reading
+> the index and converting it into the desired symbol directly.
 
 ### Output Tracker
 
@@ -160,7 +158,7 @@ Configuration options:
 |Key              |Type       |Description                                      |
 |:----------------|:----------|:------------------------------------------------|
 |`pipe_name`      |String     |Name of the pipe to send `ipc_str` to (as defined in the `[pipes]` block - [see below](#pipes)).|
-|`ipc_str`        |String     |String to be sent to the bar's named pipe.       |
+|`ipc_str`        |String     |String to be sent to the specified pipe.       |
 |`update_interval`|Time string|Interval at which to `ipc_str` (in addition to on output changes). Leave unset to disable periodic sending.|
 
 > **Example:** A [polybar](https://polybar.github.io/) date module that
@@ -196,12 +194,12 @@ Configuration options:
 > ```toml
 > # .config/i3-companion/config.toml
 > [output_tracker]
-> ipc_str = "hook:module/date1"
+> ipc_str = "action '#date.hook.0'"
 > pipe_name = "polybar"
 > update_interval = "5s"
 > 
 > [pipes]
-> polybar = "/tmp/polybar_mqueue.*"
+> polybar = ["SHELL", "polybar-msg"]
 > ```
 
 > **NOTE:** This module was designed to work with
@@ -210,8 +208,13 @@ Configuration options:
 
 ### Pipes
 
-Named glob patterns that match the named pipe(s) of the status bar(s).
+Named glob patterns that match the named pipe(s) of the status bar(s), or shell
+commands for message passing (eg. `polybar-msg`).
 If multiple modules use the same bar, only a single entry should be used for best results.
+
+> **NOTE:** If the pipe is of type `SHELL`, then any message passed to it will
+> first be split into arguments following the UNIX shell rules. Be sure to
+> include any quotes and/or escape characters as needed.
 
 Format:
 ```toml
@@ -220,6 +223,7 @@ Format:
 # ...
 
 [pipes]
-bar_1_name = "/glob/pattern/*"
-bar_2_name = "/other/glob/pattern"
+bar_1_name = ["PIPE", "/glob/pattern/*"]
+bar_2_name = ["PIPE", "/different/glob/pattern/*"]
+bar_3_name = ["SHELL", "my-bar-msg"]
 ```

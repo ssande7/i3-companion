@@ -3,8 +3,10 @@ use super::{
     output_tracker::{OutputTracker, OutputTrackerConfig},
     parsable_duration::ParsableDuration,
     pipe_sender::PipeSender,
+    shell_caller::ShellCaller,
     traits::OnEvent,
     ws_history::{WSHistory, WSHistoryConfig},
+    MsgSender, SenderType,
 };
 use dirs::config_dir;
 use serde::Deserialize;
@@ -46,7 +48,7 @@ pub struct TomlConfig {
     pub ws_history: Option<WSHistoryConfig>,
     pub layout_tracker: Option<LayoutTrackerConfig>,
     pub output_tracker: Option<OutputTrackerConfig>,
-    pub pipes: Option<HashMap<String, String>>,
+    pub pipes: Option<HashMap<String, (SenderType, String)>>,
 }
 
 pub struct Config {
@@ -55,17 +57,28 @@ pub struct Config {
     pub ws_history: Option<WSHistory>,
     pub layout_tracker: Option<LayoutTracker>,
     pub output_tracker: Option<OutputTracker>,
-    pub pipes: Option<HashMap<String, Arc<PipeSender>>>,
+    pub pipes: Option<HashMap<String, Arc<dyn MsgSender + Send + Sync>>>,
 }
 impl From<TomlConfig> for Config {
     fn from(config: TomlConfig) -> Self {
-        let pipes: Option<HashMap<String, Arc<PipeSender>>> = config.pipes.and_then(|h| {
-            Some(
-                h.into_iter()
-                    .map(|p| (p.0, Arc::new(PipeSender::new(p.1))))
-                    .collect(),
-            )
-        });
+        let pipes: Option<HashMap<String, Arc<dyn MsgSender + Send + Sync>>> =
+            config.pipes.and_then(|h| {
+                Some(
+                    h.into_iter()
+                        .map(|p| {
+                            (
+                                p.0,
+                                match p.1 .0 {
+                                    SenderType::SHELL => Arc::new(ShellCaller::new(p.1 .1))
+                                        as Arc<dyn MsgSender + Send + Sync>,
+                                    SenderType::PIPE => Arc::new(PipeSender::new(p.1 .1))
+                                        as Arc<dyn MsgSender + Send + Sync>,
+                                },
+                            )
+                        })
+                        .collect(),
+                )
+            });
         Self {
             connection_timeout: config.connection_timeout.0.into(),
             reconnect_interval: config.reconnect_interval.0.into(),

@@ -1,4 +1,4 @@
-use super::{pipe_sender::PipeSender, traits::OnEvent};
+use super::{pipe_sender::PipeSender, traits::OnEvent, MsgSender};
 use async_trait::async_trait;
 use regex::Regex;
 use serde::Deserialize;
@@ -6,7 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
     thread,
-}; //, fs::OpenOptions, io::Write, time::Duration};
+};
 use tokio_i3ipc::{
     event::{Event, Subscribe},
     reply::Node,
@@ -18,7 +18,7 @@ pub struct LayoutTracker {
     fmt_regex: Regex,
     cur_layout: i32,
     pub pipe_echo_fmt: String,
-    pub pipe: Arc<PipeSender>,
+    pub pipe: Arc<dyn MsgSender + Send + Sync>,
 }
 #[derive(Deserialize)]
 pub struct LayoutTrackerConfig {
@@ -37,8 +37,18 @@ impl Default for LayoutTracker {
     }
 }
 
-impl From<(LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)> for LayoutTracker {
-    fn from((config, pipes): (LayoutTrackerConfig, &HashMap<String, Arc<PipeSender>>)) -> Self {
+impl
+    From<(
+        LayoutTrackerConfig,
+        &HashMap<String, Arc<dyn MsgSender + Send + Sync>>,
+    )> for LayoutTracker
+{
+    fn from(
+        (config, pipes): (
+            LayoutTrackerConfig,
+            &HashMap<String, Arc<dyn MsgSender + Send + Sync>>,
+        ),
+    ) -> Self {
         Self {
             fmt_regex: Regex::new("\\{\\}").unwrap(),
             cur_layout: -1,
@@ -69,23 +79,25 @@ impl OnEvent for LayoutTracker {
         match e {
             Event::Window(_) | Event::Workspace(_) | Event::Tick(_) => {
                 if let Ok(tree) = &i3.get_tree().await {
-                    if let Some(focused) = get_focused_node(tree.into()) {
-                        let layout = if let Some(parent) = focused.parent {
-                            parent.layout as i32 + 1
+                    let layout = if let Some(focused) = get_focused_node(tree.into()) {
+                        if let Some(parent) = focused.parent {
+                            parent.layout as i32
                         } else {
-                            focused.focused.layout as i32 + 1
-                        };
-                        if self.cur_layout != layout {
-                            self.cur_layout = layout;
-                            let pipe = self.pipe.clone();
-                            let msg = self
-                                .fmt_regex
-                                .replace_all(&self.pipe_echo_fmt[..], self.cur_layout.to_string())
-                                .to_string();
-                            thread::spawn(move || {
-                                pipe.send(msg.as_str());
-                            });
+                            focused.focused.layout as i32
                         }
+                    } else {
+                        6 // floating
+                    };
+                    if self.cur_layout != layout {
+                        self.cur_layout = layout;
+                        let pipe = self.pipe.clone();
+                        let msg = self
+                            .fmt_regex
+                            .replace_all(&self.pipe_echo_fmt[..], self.cur_layout.to_string())
+                            .to_string();
+                        thread::spawn(move || {
+                            pipe.send(msg.as_str());
+                        });
                     }
                 }
             }
@@ -132,6 +144,6 @@ fn get_focused_node<'a>(node: FocusedNode<'a>) -> Option<FocusedNode<'a>> {
     {
         get_focused_node((focused, node.focused).into())
     } else {
-        None // Should never happen unless there's a problem with i3
+        None // Floating window causes this
     }
 }

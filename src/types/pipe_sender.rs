@@ -19,7 +19,9 @@ impl PipeSender {
             bar_pipe_glob: Arc::new(Mutex::new(glob_str)),
         }
     }
-    pub fn send(&self, msg: &str) {
+}
+impl super::MsgSender for PipeSender {
+    fn send(&self, msg: &str) {
         let pipe_glob = self.bar_pipe_glob.lock().unwrap();
         if let Ok(bars) = glob(pipe_glob.as_str()) {
             for bar in bars {

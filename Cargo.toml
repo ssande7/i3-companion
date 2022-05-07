@@ -1,6 +1,6 @@
 [package]
 name = "i3-companion"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -17,3 +17,4 @@ libc = {version = "0.2" } # needed for libc::open to get nonblocking write to FI
 toml = {version = "0.5.8" }
 dirs = {version = "4.0.0" }
 serde = {version = "1.0.136"}
+shellwords = {version = "1.1.0"}

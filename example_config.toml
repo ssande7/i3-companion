@@ -19,13 +19,13 @@ binding_rem_and_prev = "Mod4+Mod1+o"
 binding_rem_and_next = "Mod4+Mod1+i"
 
 [layout_tracker]
-pipe_echo_fmt = "hook:module/i3_layout{}"
+pipe_echo_fmt = "action '#i3_layout.hook.{}'"
 pipe_name = "polybar"   # Must match a definition in the [pipes] section
 
 [output_tracker]
-ipc_str = "hook:module/date1"
+ipc_str = "action '#date.hook.0'"
 pipe_name = "polybar"
 update_interval = "5s"
 
 [pipes]
-polybar = "/tmp/polybar_mqueue.*"
+polybar = ["SHELL", "polybar-msg"]
