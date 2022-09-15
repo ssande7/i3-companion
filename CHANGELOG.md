@@ -1,3 +1,10 @@
+# Version 0.1.3
+
+* Prevent crash on SIGPIPE
+* Added feature to display current workspace history stack. Currently uses
+  notify-rust to interact directly with the notification system, but may change
+  in future to IPC style to allow direct integration into a status bar.
+
 # Version 0.1.2
 
 * Added option for shell commands instead of pipes, since polybar has

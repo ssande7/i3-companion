@@ -12,6 +12,10 @@ use types::config::{Config, TomlConfig};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
+    // Ignore SIGPIPE to prevent crashes when sends fail
+    unsafe {
+        ::libc::signal(::libc::SIGPIPE, ::libc::SIG_IGN);
+    }
     let config: Config = TomlConfig::new()
         .unwrap_or_else(|e| {
             eprintln!("Error reading input: {}", e);
@@ -65,17 +69,25 @@ async fn listener(mut config: Config) -> io::Result<()> {
 
         let mut listener = i3.listen();
         let mut restart = false;
-        while let Some(event) = listener.next().await {
+        'listen: while let Some(event) = listener.next().await {
             let event = event?;
             if let Event::Shutdown(sd) = &event {
                 if sd.change == I3Event::ShutdownChange::Restart {
                     restart = true;
-                    println!("Restart detected");
+                    eprintln!("i3 restart detected. Attempting to reconnect...");
+                    break;
                 }
             }
             for handler in handlers.iter_mut() {
                 if let Some(msg) = handler.handle_event(&event, &mut i3_rx).await {
-                    i3_tx.send_msg_body(Msg::RunCommand, msg).await?;
+                    if let Err(err) = i3_tx.send_msg_body(Msg::RunCommand, msg).await {
+                        restart = true;
+                        eprintln!(
+                            "Error sending message to i3: {}\nAttempting to reconnect...",
+                            err
+                        );
+                        break 'listen;
+                    }
                 }
             }
         }

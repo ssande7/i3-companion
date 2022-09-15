@@ -27,18 +27,23 @@ impl super::MsgSender for PipeSender {
             for bar in bars {
                 if let Ok(pipe) = bar {
                     if let Some(fname) = pipe.to_str() {
-                        if let Ok(mut fid) = OpenOptions::new()
+                        match OpenOptions::new()
                             .write(true)
                             .append(true)
                             .custom_flags(libc::O_NONBLOCK)
                             .open(fname)
                         {
-                            if let Err(e) = fid.write(&msg.as_bytes()) {
-                                eprintln!("Error writing to pipe: {}", e);
-                            }
-                            if let Err(e) = fid.flush() {
-                                eprintln!("Error flushing pipe buffer: {}", e);
-                            }
+                             Ok(mut fid) => {
+                                if let Err(e) = fid.write(&msg.as_bytes()) {
+                                    eprintln!("Error writing to pipe [{}]: {}", fname, e);
+                                }
+                                if let Err(e) = fid.flush() {
+                                    eprintln!("Error flushing pipe buffer [{}]: {}", fname, e);
+                                }
+                             },
+                             Err(e) => {
+                                 eprintln!("Error opening pipe [{}]: {}", fname, e);
+                             }
                         }
                     }
                 }
