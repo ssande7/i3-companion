@@ -108,18 +108,6 @@ impl HistoryManager {
             }
         }
     }
-    fn display(&self, output: &String) -> Result<String, ()> {
-        let hist = self.get(output).ok_or(())?;
-        let mut out = String::with_capacity(6 * self.hist_sz);
-        for (id, ws) in hist.hist.iter().enumerate() {
-            if id == hist.hist_ptr {
-                out.push_str(format!("{}\t<-\n", ws).as_str());
-            } else {
-                out.push_str(format!("{}\n", ws).as_str());
-            }
-        }
-        Ok(out)
-    }
 }
 
 /// Interface struct for workspace history stack
@@ -357,7 +345,8 @@ impl WSHistory {
                 let mut dest_ws = hist.hist_ptr;
                 while dest_ws < limit {
                     if matches!(workspaces.iter().find(|&w| w.num == hist[dest_ws]), Some(ws)
-                        if (self.skip_visible && ws.visible) || (per_output && ws.output != self.cur_output))
+                        if (per_output && (ws.output != self.cur_output || ws.visible))
+                        || (!per_output && self.skip_visible && ws.visible))
                     {
                         dest_ws += 1;
                     } else {
@@ -454,6 +443,41 @@ impl WSHistory {
                     .swap(next_ws, next_ws2);
             }
         }
+    }
+
+    /// Print out the workspace history stack for the current output with an arrow pointing to the
+    /// focused one.
+    async fn display(&self, i3: &mut I3) -> Result<String, ()> {
+        let hist = self.hist.get(&self.cur_output).ok_or(())?;
+        let mut out = String::with_capacity(6 * self.hist.hist_sz);
+        let mut filter_out = Vec::with_capacity(0);
+        let per_output = match self.hist.hist {
+            HistType::PerOutput(_) => true,
+            _ => false,
+        };
+        if let Ok(workspaces) = i3.get_workspaces().await {
+            filter_out.reserve(workspaces.len());
+            for ws in workspaces {
+                if (per_output && ws.output != self.cur_output)
+                    || (!per_output && self.skip_visible && ws.visible)
+                {
+                    filter_out.push(ws.num);
+                }
+            }
+        }
+        let mut last = None;
+        for (id, ws) in hist.hist.iter().enumerate() {
+            if filter_out.contains(ws) || matches!(last, Some(last_ws) if last_ws == ws) {
+                continue;
+            }
+            if id == hist.hist_ptr {
+                out.push_str(format!("{}\t<-\n", ws).as_str());
+            } else {
+                out.push_str(format!("{}\n", ws).as_str());
+            }
+            last = Some(ws);
+        }
+        Ok(out)
     }
 }
 
@@ -567,9 +591,11 @@ impl OnEvent for WSHistory {
                         })
                     } else if matches!(&self.binding_show_stack, Some(kb) if kb == key) {
                         self.check_timeout();
-                        if let Ok(hist_msg) = self.hist.display(&self.cur_output) {
+                        if let Ok(hist_msg) = self.display(i3).await {
                             let header = match self.hist.hist {
-                                HistType::PerOutput(_) => format!("i3 Workspace History ({})", self.cur_output),
+                                HistType::PerOutput(_) => {
+                                    format!("i3 Workspace History ({})", self.cur_output)
+                                }
                                 HistType::Single(_) => "i3 Workspace History".into(),
                             };
                             match notify_rust::Notification::new()
