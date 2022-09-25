@@ -49,13 +49,14 @@ impl History {
         self.hist.len()
     }
     /// Reset the history pointer, reversing the order of history before it
-    /// NOTE: may change `ws_hist.len()`
+    /// NOTE: may change `hist.len()`
     fn reset_ptr(&mut self) {
         if self.hist_ptr > 0 {
             // Reverse order of history that has been cycled back through,
             // preventing double ups
             if self.hist_ptr < self.hist.len() - 1 && self.hist[self.hist_ptr + 1] == self.hist[0] {
                 self.hist.pop_front();
+                self.hist_ptr -= 1;
             }
             for i in 0..=self.hist_ptr / 2 {
                 self.hist.swap(i, self.hist_ptr - i);

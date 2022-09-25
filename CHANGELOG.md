@@ -4,6 +4,8 @@
 * Added feature to display current workspace history stack. Currently uses
   notify-rust to interact directly with the notification system, but may change
   in future to IPC style to allow direct integration into a status bar.
+* Fixed a bug where the stack pointer would be incorrect after a reset in an
+  edge case.
 
 # Version 0.1.2
 
