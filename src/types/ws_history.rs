@@ -49,13 +49,14 @@ impl History {
         self.hist.len()
     }
     /// Reset the history pointer, reversing the order of history before it
-    /// NOTE: may change `ws_hist.len()`
+    /// NOTE: may change `hist.len()`
     fn reset_ptr(&mut self) {
         if self.hist_ptr > 0 {
             // Reverse order of history that has been cycled back through,
             // preventing double ups
             if self.hist_ptr < self.hist.len() - 1 && self.hist[self.hist_ptr + 1] == self.hist[0] {
                 self.hist.pop_front();
+                self.hist_ptr -= 1;
             }
             for i in 0..=self.hist_ptr / 2 {
                 self.hist.swap(i, self.hist_ptr - i);
@@ -129,6 +130,7 @@ pub struct WSHistory {
     pub binding_move_to_head: Option<KeyBinding>,
     pub binding_rem_and_prev: Option<KeyBinding>,
     pub binding_rem_and_next: Option<KeyBinding>,
+    pub binding_show_stack: Option<KeyBinding>,
 }
 
 // serde default values
@@ -163,6 +165,7 @@ pub struct WSHistoryConfig {
     pub binding_move_to_head: Option<KeyBinding>,
     pub binding_rem_and_prev: Option<KeyBinding>,
     pub binding_rem_and_next: Option<KeyBinding>,
+    pub binding_show_stack: Option<KeyBinding>,
 }
 
 impl Default for WSHistory {
@@ -235,6 +238,11 @@ impl Default for WSHistory {
                 symbol: Some("i".into()),
                 input_type: I3Event::BindType::Keyboard,
             }),
+            binding_show_stack: Some(KeyBinding {
+                event_state_mask: vec!["Mod4".into(), "ctrl".into()].into_iter().collect(),
+                symbol: Some("s".into()),
+                input_type: I3Event::BindType::Keyboard,
+            }),
         }
     }
 }
@@ -259,6 +267,7 @@ impl From<WSHistoryConfig> for WSHistory {
             binding_move_to_head: config.binding_move_to_head,
             binding_rem_and_prev: config.binding_rem_and_prev,
             binding_rem_and_next: config.binding_rem_and_next,
+            binding_show_stack: config.binding_show_stack,
         }
     }
 }
@@ -337,7 +346,8 @@ impl WSHistory {
                 let mut dest_ws = hist.hist_ptr;
                 while dest_ws < limit {
                     if matches!(workspaces.iter().find(|&w| w.num == hist[dest_ws]), Some(ws)
-                        if (self.skip_visible && ws.visible) || (per_output && ws.output != self.cur_output))
+                        if (per_output && (ws.output != self.cur_output || ws.visible))
+                        || (!per_output && self.skip_visible && ws.visible))
                     {
                         dest_ws += 1;
                     } else {
@@ -435,6 +445,41 @@ impl WSHistory {
             }
         }
     }
+
+    /// Print out the workspace history stack for the current output with an arrow pointing to the
+    /// focused one.
+    async fn display(&self, i3: &mut I3) -> Result<String, ()> {
+        let hist = self.hist.get(&self.cur_output).ok_or(())?;
+        let mut out = String::with_capacity(6 * self.hist.hist_sz);
+        let mut filter_out = Vec::with_capacity(0);
+        let per_output = match self.hist.hist {
+            HistType::PerOutput(_) => true,
+            _ => false,
+        };
+        if let Ok(workspaces) = i3.get_workspaces().await {
+            filter_out.reserve(workspaces.len());
+            for ws in workspaces {
+                if (per_output && ws.output != self.cur_output)
+                    || (!per_output && self.skip_visible && ws.visible)
+                {
+                    filter_out.push(ws.num);
+                }
+            }
+        }
+        let mut last = None;
+        for (id, ws) in hist.hist.iter().enumerate() {
+            if filter_out.contains(ws) || matches!(last, Some(last_ws) if last_ws == ws) {
+                continue;
+            }
+            if id == hist.hist_ptr {
+                out.push_str(format!("{}\t<-\n", ws).as_str());
+            } else {
+                out.push_str(format!("{}\n", ws).as_str());
+            }
+            last = Some(ws);
+        }
+        Ok(out)
+    }
 }
 
 #[async_trait]
@@ -523,22 +568,18 @@ impl OnEvent for WSHistory {
                         }
                         None
                     } else if matches!(&self.binding_to_head, Some(kb) if kb == key) {
-                        self.goto_head(i3)
-                            .await
-                            .and_then(|new_ws| {
-                                self.ignore_ctr += 1;
-                                Some(format!("workspace number {}", new_ws))
-                            })
+                        self.goto_head(i3).await.and_then(|new_ws| {
+                            self.ignore_ctr += 1;
+                            Some(format!("workspace number {}", new_ws))
+                        })
                     } else if matches!(&self.binding_move_to_head, Some(kb) if kb == key) {
-                        self.goto_head(i3)
-                            .await
-                            .and_then(|new_ws| {
-                                self.ignore_ctr += 2;
-                                Some(format!(
-                                    "move container to workspace number {0}; workspace number {0}",
-                                    new_ws
-                                ))
-                            })
+                        self.goto_head(i3).await.and_then(|new_ws| {
+                            self.ignore_ctr += 2;
+                            Some(format!(
+                                "move container to workspace number {0}; workspace number {0}",
+                                new_ws
+                            ))
+                        })
                     } else if matches!(&self.binding_rem_and_prev, Some(kb) if kb == key) {
                         self.rem_ws(WSDirection::PREV, i3).await.and_then(|new_ws| {
                             self.ignore_ctr += 1;
@@ -549,6 +590,28 @@ impl OnEvent for WSHistory {
                             self.ignore_ctr += 1;
                             Some(format!("workspace number {}", new_ws))
                         })
+                    } else if matches!(&self.binding_show_stack, Some(kb) if kb == key) {
+                        self.check_timeout();
+                        if let Ok(hist_msg) = self.display(i3).await {
+                            let header = match self.hist.hist {
+                                HistType::PerOutput(_) => {
+                                    format!("i3 Workspace History ({})", self.cur_output)
+                                }
+                                HistType::Single(_) => "i3 Workspace History".into(),
+                            };
+                            match notify_rust::Notification::new()
+                                .summary(header.as_str())
+                                .body(hist_msg.as_str())
+                                .appname("i3-companion")
+                                .show()
+                            {
+                                Err(err) => {
+                                    eprintln!("Error showing history stack: {}", err);
+                                }
+                                Ok(_) => (),
+                            }
+                        }
+                        None
                     } else {
                         None
                     }
